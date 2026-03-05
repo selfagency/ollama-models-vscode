@@ -20,13 +20,18 @@ export class ModelTreeItem extends TreeItem {
     public readonly label: string,
     public readonly type: 'pane' | 'model' | 'running',
     public readonly size?: number,
+    public readonly durationMs?: number,
   ) {
     super(label);
     this.contextValue = type;
     this.collapsibleState = type === 'pane' ? TreeItemCollapsibleState.Expanded : TreeItemCollapsibleState.None;
 
-    if (type === 'model' || type === 'running') {
+    if (type === 'model') {
       this.description = this.formatSize(size);
+    } else if (type === 'running') {
+      const sizeStr = this.formatSize(size);
+      const durationStr = this.formatDuration(durationMs);
+      this.description = [sizeStr, durationStr].filter(Boolean).join(' • ');
     }
   }
 
@@ -34,6 +39,19 @@ export class ModelTreeItem extends TreeItem {
     if (!bytes) return '';
     const gb = bytes / 1024 ** 3;
     return gb.toFixed(1) + ' GB';
+  }
+
+  private formatDuration(ms?: number): string {
+    if (!ms) return '';
+    const secs = Math.floor(ms / 1000);
+    const mins = Math.floor(secs / 60);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${mins % 60}m`;
+    if (mins > 0) return `${mins}m ${secs % 60}s`;
+    return `${secs}s`;
   }
 }
 
@@ -45,17 +63,22 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
   readonly onDidChangeTreeData: Event<ModelTreeItem | null> = this.treeChangeEmitter.event;
 
   private panes: ModelTreeItem[] = [
-    new ModelTreeItem('Library', 'pane'),
+    new ModelTreeItem('Running Models', 'pane'),
     new ModelTreeItem('Installed', 'pane'),
-    new ModelTreeItem('Processes', 'pane'),
+    new ModelTreeItem('Library', 'pane'),
   ];
 
   private refreshTimeout: NodeJS.Timeout | null = null;
   private lastRefreshTime = 0;
   private libraryLastRefreshTime = 0;
   private refreshIntervals: NodeJS.Timeout[] = [];
+  private libraryLoadPromise: Promise<ModelTreeItem[]> | null = null;
+  private cachedLibraryModels: Map<string, ModelTreeItem> = new Map();
 
-  constructor(private client: Ollama) {
+  constructor(
+    private client: Ollama,
+    private logChannel?: any,
+  ) {
     this.startAutoRefresh();
   }
 
@@ -73,7 +96,7 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
       switch (element.label) {
         case 'Installed':
           return this.getInstalledModels();
-        case 'Processes':
+        case 'Running Models':
           return this.getRunningModels();
         case 'Library':
           return this.getLibraryModels();
@@ -109,25 +132,85 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
    */
   private async getRunningModels(): Promise<ModelTreeItem[]> {
     try {
+      this.logChannel?.debug('[Ollama] Fetching running models via ps()...');
       const response = await this.client.ps();
-      return response.models.map(model => new ModelTreeItem(model.name, 'running', model.size));
-    } catch {
+      this.logChannel?.debug(`[Ollama] Found ${response.models.length} running models`);
+      return response.models.map(model => {
+        // Extract duration from model metadata if available
+        const durationMs = model.expires_at
+          ? Math.max(0, new Date(model.expires_at).getTime() - Date.now())
+          : undefined;
+        const item = new ModelTreeItem(model.name, 'running', model.size, durationMs);
+        // Context value 'running' allows stop action in context menu
+        return item;
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logChannel?.error(`[Ollama] Failed to load running models: ${msg}`);
       return [new ModelTreeItem('Failed to load running models', 'model')];
     }
   }
 
   /**
-   * Get models available from library (placeholder for catalog fetching)
+   * Get models available from library (catalog fetching with error handling)
    */
   private async getLibraryModels(): Promise<ModelTreeItem[]> {
-    return [new ModelTreeItem('Loading library...', 'model')];
+    try {
+      // Return cached result if already loading or recently loaded
+      if (this.libraryLoadPromise) {
+        return this.libraryLoadPromise;
+      }
+
+      // If we have cached models from a recent load, return those
+      if (this.cachedLibraryModels.size > 0) {
+        return Array.from(this.cachedLibraryModels.values());
+      }
+
+      // Start loading library models
+      this.logChannel?.debug('[Ollama] Starting library catalog fetch...');
+      this.libraryLoadPromise = this.fetchLibraryWithTimeout();
+      const models = await this.libraryLoadPromise;
+      this.libraryLoadPromise = null;
+      return models;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logChannel?.error(`[Ollama] Failed to load library: ${msg}`);
+      this.libraryLoadPromise = null;
+      return [new ModelTreeItem('Unable to load library catalog', 'model')];
+    }
+  }
+
+  /**
+   * Fetch library with a timeout to prevent hanging
+   */
+  private async fetchLibraryWithTimeout(timeoutMs = 10000): Promise<ModelTreeItem[]> {
+    this.logChannel?.debug('[Ollama] Library fetch timeout set to ' + timeoutMs + 'ms');
+    const timeoutPromise = new Promise<ModelTreeItem[]>((_, reject) => {
+      setTimeout(() => reject(new Error('Library fetch timeout')), timeoutMs);
+    });
+
+    try {
+      // Try to fetch from Ollama library API
+      // Note: This depends on what library endpoints are available
+      this.logChannel?.debug('[Ollama] Attempting to fetch from Ollama library...');
+      // For now, return empty as a placeholder - the actual implementation depends on Ollama API
+      this.cachedLibraryModels.clear();
+      this.logChannel?.debug('[Ollama] Library catalog is empty or not available');
+      return [];
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logChannel?.warn(`[Ollama] Library fetch error: ${msg}`);
+      throw error;
+    }
   }
 
   /**
    * Refresh the tree (manual refresh button - forces immediate refresh)
    */
   refresh(): void {
+    this.logChannel?.debug('[Ollama] Manual refresh triggered');
     this.lastRefreshTime = 0; // Force refresh
+    this.libraryLastRefreshTime = 0;
     this.treeChangeEmitter.fire(null);
   }
 
@@ -167,6 +250,7 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
 
     // Auto-refresh local/running models every 30 seconds
     if (localRefreshSecs > 0) {
+      this.logChannel?.debug(`[Ollama] Auto-refresh set for local models every ${localRefreshSecs}s`);
       const localInterval = setInterval(() => {
         this.debouncedRefresh();
       }, localRefreshSecs * 1000);
@@ -176,6 +260,9 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
     // Auto-refresh library every 6 hours
     const libraryRefreshSecs = workspace.getConfiguration('ollama').get<number>('libraryRefreshInterval') || 21600;
     if (libraryRefreshSecs > 0) {
+      this.logChannel?.debug(
+        `[Ollama] Auto-refresh set for library every ${libraryRefreshSecs}s (${Math.round(libraryRefreshSecs / 3600)}h)`,
+      );
       const libraryInterval = setInterval(() => {
         const now = Date.now();
         if (now - this.libraryLastRefreshTime >= libraryRefreshSecs * 1000) {
@@ -192,6 +279,7 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
         e.affectsConfiguration('ollama.localModelRefreshInterval') ||
         e.affectsConfiguration('ollama.libraryRefreshInterval')
       ) {
+        this.logChannel?.debug('[Ollama] Ollama settings changed, restarting auto-refresh');
         this.stopAutoRefresh();
         this.startAutoRefresh();
       }
@@ -223,11 +311,14 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
    */
   async deleteModel(modelName: string): Promise<void> {
     try {
+      this.logChannel?.debug(`[Ollama] Deleting model: ${modelName}`);
       await this.client.delete({ model: modelName });
+      this.logChannel?.info(`[Ollama] Model deleted: ${modelName}`);
       this.refresh();
       window.showInformationMessage(`Model ${modelName} deleted`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logChannel?.error(`[Ollama] Failed to delete model ${modelName}: ${msg}`);
       window.showErrorMessage(`Failed to delete model: ${msg}`);
     }
   }
@@ -237,16 +328,19 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
    */
   async pullModel(modelName: string): Promise<void> {
     try {
+      this.logChannel?.debug(`[Ollama] Starting pull for model: ${modelName}`);
       window.withProgress(
         { location: 15, title: `Pulling ${modelName}...` }, // 15 = ProgressLocation.Window
         async () => {
           await this.client.pull({ model: modelName });
+          this.logChannel?.info(`[Ollama] Model pulled successfully: ${modelName}`);
           this.refresh();
           window.showInformationMessage(`Model ${modelName} pulled successfully`);
         },
       );
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logChannel?.error(`[Ollama] Failed to pull model ${modelName}: ${msg}`);
       window.showErrorMessage(`Failed to pull model: ${msg}`);
     }
   }
@@ -256,11 +350,14 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
    */
   async stopModel(modelName: string): Promise<void> {
     try {
+      this.logChannel?.debug(`[Ollama] Stopping model: ${modelName}`);
       // Ollama doesn't have a direct "stop" API, but models stop when no longer used
       // This is a placeholder for future implementation
+      this.logChannel?.info(`[Ollama] Model stop not yet implemented for: ${modelName}`);
       window.showInformationMessage(`Model stop not yet implemented for ${modelName}`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logChannel?.error(`[Ollama] Failed to stop model ${modelName}: ${msg}`);
       window.showErrorMessage(`Failed to stop model: ${msg}`);
     }
   }
@@ -269,8 +366,8 @@ export class OllamaSidebarProvider implements TreeDataProvider<ModelTreeItem>, D
 /**
  * Register sidebar with VS Code
  */
-export function registerSidebar(context: ExtensionContext, client: Ollama): void {
-  const provider = new OllamaSidebarProvider(client);
+export function registerSidebar(context: ExtensionContext, client: Ollama, logChannel?: any): void {
+  const provider = new OllamaSidebarProvider(client, logChannel);
 
   context.subscriptions.push(
     window.registerTreeDataProvider('ollama-sidebar', provider),

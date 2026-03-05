@@ -6,7 +6,7 @@ import { registerSidebar } from './sidebar.js';
 export async function activate(context: vscode.ExtensionContext) {
   const logOutputChannel =
     typeof vscode.window.createOutputChannel === 'function'
-      ? vscode.window.createOutputChannel('Ollama Models', { log: true })
+      ? vscode.window.createOutputChannel('Ollama for Copilot', { log: true })
       : undefined;
 
   const client = await getOllamaClient(context);
@@ -19,7 +19,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // Register sidebar view
-  registerSidebar(context, client);
+  registerSidebar(context, client, logOutputChannel);
 
   // Test connection to Ollama server on startup (non-blocking)
   void (async () => {

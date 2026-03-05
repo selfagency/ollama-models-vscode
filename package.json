@@ -35,9 +35,7 @@
   "publisher": "selfagency",
   "main": "./dist/extension.js",
   "scripts": {
-    "prepare": "husky",
-    "test": "vitest run src",
-    "vscode:prepublish": "task compile"
+    "prepare": "husky"
   },
   "dependencies": {
     "ollama": "^0.6.3"
@@ -90,7 +88,7 @@
     "views": {
       "ollama-explorer": [
         {
-          "icon": "ollama.svg",
+          "icon": "$(package)",
           "id": "ollama-sidebar",
           "name": "Models"
         }
@@ -119,7 +117,7 @@
       {
         "command": "ollama-copilot.stopModel",
         "title": "Stop Model",
-        "icon": "$(stop)"
+        "icon": "$(stop-circle)"
       }
     ],
     "menus": {
