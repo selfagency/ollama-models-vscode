@@ -120,7 +120,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install task
-        run: curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash && apt install task -y
+        run: curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash && sudo apt-get install task -y
 
       - name: Generate release notes for changelog
         id: changelog_notes
