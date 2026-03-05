@@ -15,6 +15,7 @@ import {
   LogOutputChannel,
   Progress,
   ProvideLanguageModelChatResponseOptions,
+  QuickPickItemKind,
   window,
 } from 'vscode';
 import { getContextLengthOverride, getOllamaClient } from './client';
@@ -326,21 +327,47 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   }
 
   /**
-   * Manage authentication token
+   * Manage authentication token with status display and clear option
    */
   async setAuthToken(): Promise<void> {
-    const token = await window.showInputBox({
-      prompt: 'Enter Ollama authentication token (leave empty for anonymous)',
-      password: true,
-      ignoreFocusOut: true,
-    });
+    const existingToken = await this.context.secrets.get('ollama-auth-token');
+    const status = existingToken ? '✓ Authenticated' : '○ Anonymous';
 
-    if (token !== undefined) {
-      await this.context.secrets.store('ollama-auth-token', token);
-      this.outputChannel.info('Ollama authentication token updated');
-      // Reinitialize client with new token
+    const action = await window.showQuickPick(
+      [
+        { label: `${status}`, description: 'Current authentication status', kind: QuickPickItemKind.Separator },
+        { label: 'Set Token', description: 'Enter a new authentication token' },
+        ...(existingToken ? [{ label: 'Clear Token', description: 'Remove stored authentication' }] : []),
+      ],
+      { matchOnDescription: true, ignoreFocusOut: true },
+    );
+
+    if (!action) return;
+
+    if (action.label === 'Clear Token') {
+      await this.context.secrets.delete('ollama-auth-token');
+      this.outputChannel.info('Ollama authentication token cleared');
       this.client = await getOllamaClient(this.context);
       this.modelsChangeEventEmitter.fire();
+    } else if (action.label === 'Set Token') {
+      const token = await window.showInputBox({
+        prompt: 'Enter Ollama authentication token (leave empty for anonymous)',
+        password: true,
+        ignoreFocusOut: true,
+      });
+
+      if (token !== undefined) {
+        if (token) {
+          await this.context.secrets.store('ollama-auth-token', token);
+          this.outputChannel.info('Ollama authentication token updated');
+        } else {
+          await this.context.secrets.delete('ollama-auth-token');
+          this.outputChannel.info('Ollama authentication token cleared');
+        }
+        // Reinitialize client with new token
+        this.client = await getOllamaClient(this.context);
+        this.modelsChangeEventEmitter.fire();
+      }
     }
   }
 }
