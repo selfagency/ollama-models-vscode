@@ -6,6 +6,7 @@ import {
   Event,
   EventEmitter,
   ExtensionContext,
+  ProgressLocation,
   TreeDataProvider,
   TreeItem,
   TreeItemCollapsibleState,
@@ -15,6 +16,7 @@ import {
   window,
   workspace,
 } from 'vscode';
+import { fetchModelCapabilities } from './client.js';
 import type { DiagnosticsLogger } from './diagnostics.js';
 
 type LibrarySortMode = 'name' | 'recency';
@@ -313,7 +315,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           );
           // Set initial tooltip
           item.tooltip = buildLocalModelTooltip(model.name, model.size, running);
-          // Fetch description asynchronously
+          // Fetch tooltip description asynchronously
           void fetchModelPagePreview(model.name).then(
             preview => {
               item.tooltip = buildLocalModelTooltip(model.name, model.size, running, preview.description);
@@ -321,6 +323,23 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
             },
             () => {
               // Keep initial tooltip on error
+            },
+          );
+          // Fetch capability badges asynchronously
+          void fetchModelCapabilities(this.client, model.name).then(
+            caps => {
+              const badges: string[] = [];
+              if (caps.toolCalling) badges.push('tools');
+              if (caps.imageInput) badges.push('vision');
+              if (badges.length > 0) {
+                const badgeStr = badges.map(b => `[${b}]`).join(' ');
+                const existing = item.description ?? '';
+                item.description = existing ? `${existing} ${badgeStr}` : badgeStr;
+                this.treeChangeEmitter.fire(item);
+              }
+            },
+            () => {
+              // Silently skip badges on error
             },
           );
 
@@ -934,6 +953,53 @@ export function handleDeleteModel(item: ModelTreeItem, localProvider: LocalModel
 }
 
 /**
+ * Stream a model pull, reporting progress to VS Code's notification system.
+ */
+async function pullModelWithProgress(
+  client: Ollama,
+  modelName: string,
+  localProvider: LocalModelsProvider,
+  logChannel?: DiagnosticsLogger,
+): Promise<void> {
+  await window.withProgress(
+    { location: ProgressLocation.Notification, title: `Pulling ${modelName}`, cancellable: false },
+    async progress => {
+      try {
+        const stream = await client.pull({ model: modelName, stream: true });
+        let lastCompleted = 0;
+        let lastTotal = 0;
+
+        for await (const chunk of stream) {
+          const total = chunk.total ?? 0;
+          const completed = chunk.completed ?? 0;
+
+          if (total > 0 && completed > 0) {
+            const pct = Math.round((completed / total) * 100);
+            const completedMb = (completed / 1024 / 1024).toFixed(1);
+            const totalMb = (total / 1024 / 1024).toFixed(1);
+            const increment =
+              lastTotal === total && lastCompleted > 0 ? Math.round(((completed - lastCompleted) / total) * 100) : 0;
+            progress.report({ message: `${pct}% (${completedMb} / ${totalMb} MB)`, increment });
+            lastCompleted = completed;
+            lastTotal = total;
+          } else if (chunk.status) {
+            progress.report({ message: chunk.status });
+          }
+        }
+
+        logChannel?.info(`[Ollama] Model pulled successfully: ${modelName}`);
+        localProvider.refresh();
+        window.showInformationMessage(`Model ${modelName} pulled successfully`);
+      } catch (error) {
+        logChannel?.exception?.(`[Ollama] Failed to pull model ${modelName}`, error);
+        const msg = error instanceof Error ? error.message : String(error);
+        window.showErrorMessage(`Failed to pull model: ${msg}`);
+      }
+    },
+  );
+}
+
+/**
  * Command handler: pull model
  */
 export async function handlePullModel(
@@ -946,43 +1012,21 @@ export async function handlePullModel(
     ignoreFocusOut: false,
   });
   if (modelName) {
-    void client.pull({ model: modelName }).then(
-      () => {
-        logChannel?.info(`[Ollama] Model pulled successfully: ${modelName}`);
-        localProvider.refresh();
-        window.showInformationMessage(`Model ${modelName} pulled successfully`);
-      },
-      error => {
-        logChannel?.exception(`[Ollama] Failed to pull model ${modelName}`, error);
-        const msg = error instanceof Error ? error.message : String(error);
-        window.showErrorMessage(`Failed to pull model: ${msg}`);
-      },
-    );
+    await pullModelWithProgress(client, modelName, localProvider, logChannel);
   }
 }
 
 /**
  * Command handler: pull model from library
  */
-export function handlePullModelFromLibrary(
+export async function handlePullModelFromLibrary(
   item: ModelTreeItem,
   client: Ollama,
   localProvider: LocalModelsProvider,
   logChannel?: DiagnosticsLogger,
-): void {
+): Promise<void> {
   if (item && item.type === 'library-model') {
-    void client.pull({ model: item.label }).then(
-      () => {
-        logChannel?.info(`[Ollama] Model pulled successfully from library: ${item.label}`);
-        localProvider.refresh();
-        window.showInformationMessage(`Model ${item.label} pulled successfully`);
-      },
-      error => {
-        logChannel?.exception(`[Ollama] Failed to pull model ${item.label}`, error);
-        const msg = error instanceof Error ? error.message : String(error);
-        window.showErrorMessage(`Failed to pull model: ${msg}`);
-      },
-    );
+    await pullModelWithProgress(client, item.label, localProvider, logChannel);
   }
 }
 
@@ -1125,7 +1169,7 @@ export function registerSidebar(context: ExtensionContext, client: Ollama, logCh
     commands.registerCommand('ollama-copilot.pullModel', async () =>
       handlePullModel(client, localProvider, logChannel),
     ),
-    commands.registerCommand('ollama-copilot.pullModelFromLibrary', (item: ModelTreeItem) =>
+    commands.registerCommand('ollama-copilot.pullModelFromLibrary', async (item: ModelTreeItem) =>
       handlePullModelFromLibrary(item, client, localProvider, logChannel),
     ),
     commands.registerCommand('ollama-copilot.openLibraryModelPage', (item: ModelTreeItem) =>

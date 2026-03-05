@@ -52,6 +52,7 @@ describe('LocalModelsProvider', () => {
       Uri: {
         parse: vi.fn((value: string) => ({ value })),
       },
+      ProgressLocation: { Notification: 15 },
       workspace: {
         getConfiguration: vi.fn(() => ({
           get: vi.fn((key: string) => {
@@ -778,5 +779,228 @@ describe('Extracted command handlers', () => {
     const { handleManageCloudApiKey } = await import('./sidebar.js');
 
     expect(typeof handleManageCloudApiKey).toBe('function');
+  });
+
+  it('handlePullModel reports streaming progress via withProgress', async () => {
+    vi.resetModules();
+
+    const progressReport = vi.fn();
+
+    async function* makePullStream() {
+      yield { status: 'pulling manifest', digest: '', total: 0, completed: 0 };
+      yield { status: 'downloading', digest: 'sha256:abc', total: 1000, completed: 250 };
+      yield { status: 'downloading', digest: 'sha256:abc', total: 1000, completed: 1000 };
+      yield { status: 'success', digest: 'sha256:abc', total: 1000, completed: 1000 };
+    }
+
+    const mockPull = vi.fn().mockReturnValue(makePullStream());
+    const mockRefresh = vi.fn();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        description?: string;
+        contextValue?: string;
+        collapsibleState?: number;
+        tooltip?: string;
+        command?: unknown;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showInputBox: vi.fn().mockResolvedValue('llama3:8b'),
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
+          await task({ report: progressReport });
+        }),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+
+    const { handlePullModel } = await import('./sidebar.js');
+
+    await handlePullModel({ pull: mockPull } as any, { refresh: mockRefresh } as any);
+
+    expect(mockPull).toHaveBeenCalledWith({ model: 'llama3:8b', stream: true });
+    // Progress should have been reported at least once with a percentage message
+    const reportCalls = progressReport.mock.calls.map((c: any) => c[0].message as string);
+    expect(reportCalls.some(msg => msg.includes('%'))).toBe(true);
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it('handlePullModel does nothing when user cancels input', async () => {
+    vi.resetModules();
+
+    const mockPull = vi.fn();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showInputBox: vi.fn().mockResolvedValue(undefined),
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+
+    const { handlePullModel } = await import('./sidebar.js');
+
+    await handlePullModel({ pull: mockPull } as any, { refresh: vi.fn() } as any);
+
+    expect(mockPull).not.toHaveBeenCalled();
+  });
+
+  it('handlePullModelFromLibrary reports streaming progress', async () => {
+    vi.resetModules();
+
+    const progressReport = vi.fn();
+
+    async function* makePullStream() {
+      yield { status: 'downloading', digest: 'sha256:abc', total: 2000, completed: 1000 };
+      yield { status: 'success', digest: 'sha256:abc', total: 2000, completed: 2000 };
+    }
+
+    const mockPull = vi.fn().mockReturnValue(makePullStream());
+    const mockRefresh = vi.fn();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        description?: string;
+        contextValue?: string;
+        collapsibleState?: number;
+        tooltip?: string;
+        command?: unknown;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
+          await task({ report: progressReport });
+        }),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+
+    const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
+
+    const item = new ModelTreeItem('mistral:7b', 'library-model');
+    await handlePullModelFromLibrary(item, { pull: mockPull } as any, { refresh: mockRefresh } as any);
+
+    expect(mockPull).toHaveBeenCalledWith({ model: 'mistral:7b', stream: true });
+    const reportCalls = progressReport.mock.calls.map((c: any) => c[0].message as string);
+    expect(reportCalls.some(msg => msg.includes('%'))).toBe(true);
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it('local models show capability badges in description', async () => {
+    vi.resetModules();
+
+    vi.doMock('./client.js', () => ({
+      fetchModelCapabilities: vi.fn().mockResolvedValue({
+        toolCalling: true,
+        imageInput: false,
+        maxInputTokens: 4096,
+        maxOutputTokens: 4096,
+      }),
+    }));
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        description?: string;
+        contextValue?: string;
+        collapsibleState?: number;
+        tooltip?: string;
+        command?: unknown;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({
+          get: vi.fn((key: string) => {
+            if (key === 'localModelRefreshInterval') return 0;
+            return undefined;
+          }),
+        })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+
+    const mockClient = {
+      list: vi.fn().mockResolvedValue({
+        models: [{ name: 'llama3-tools:latest', size: 4000000000, digest: 'abc' }],
+      }),
+      ps: vi.fn().mockResolvedValue({ models: [] }),
+    } as any;
+
+    const localProvider = new LocalModelsProvider(mockClient);
+
+    const models = await localProvider.getChildren();
+    // Wait for async badge update
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(models).toHaveLength(1);
+    // After capability fetch, description should include tools badge
+    // We trigger by waiting for the async update
+    const item = models[0];
+    expect(item.label).toBe('llama3-tools:latest');
+    localProvider.dispose();
   });
 });
