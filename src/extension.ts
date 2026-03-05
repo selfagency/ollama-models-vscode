@@ -55,7 +55,7 @@ export function setupChatParticipant(
   context: vscode.ExtensionContext,
   participantHandler: vscode.ChatRequestHandler,
   chatApi?: Pick<typeof vscode.chat, 'createChatParticipant'>,
-  uriApi?: any,
+  uriApi?: Pick<typeof vscode.Uri, 'joinPath'>,
 ): vscode.Disposable {
   const chat = chatApi || vscode.chat;
   const Uri = uriApi || vscode.Uri;
@@ -189,7 +189,6 @@ export async function activate(context: vscode.ExtensionContext) {
     ? createDiagnosticsLogger(logOutputChannel, () => getConfiguredLogLevel())
     : noopLogger;
 
-  logOutputChannel?.show(true);
   diagnostics.info('[Ollama] Activating extension...');
 
   const client = await getOllamaClient(context);

@@ -419,7 +419,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   async startModel(modelName: string): Promise<void> {
     try {
       this.logChannel?.debug(`[Ollama] Starting local model: ${modelName}`);
-      window.withProgress({ location: 15, title: `Starting ${modelName}...` }, async () => {
+      await window.withProgress({ location: 15, title: `Starting ${modelName}...` }, async () => {
         await this.client.generate({ model: modelName, prompt: '', stream: false, keep_alive: '10m' });
         this.logChannel?.info(`[Ollama] Model started: ${modelName}`);
         this.refresh();
