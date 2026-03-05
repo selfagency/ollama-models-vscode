@@ -15,6 +15,7 @@ import {
   LogOutputChannel,
   Progress,
   ProvideLanguageModelChatResponseOptions,
+  QuickPickItemKind,
   window,
 } from 'vscode';
 import { getContextLengthOverride, getOllamaClient } from './client';
@@ -334,7 +335,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
     const action = await window.showQuickPick(
       [
-        { label: `${status}`, description: 'Current authentication status', kind: -1 },
+        { label: `${status}`, description: 'Current authentication status', kind: QuickPickItemKind.Separator },
         { label: 'Set Token', description: 'Enter a new authentication token' },
         ...(existingToken ? [{ label: 'Clear Token', description: 'Remove stored authentication' }] : []),
       ],
