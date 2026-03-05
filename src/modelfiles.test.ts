@@ -1,6 +1,6 @@
+import { join } from 'node:path';
 import type { Ollama } from 'ollama';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { join } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // getModelfilesFolder
@@ -21,7 +21,10 @@ const minimalVscodeMock = () => ({
     constructor(public id: string) {}
   },
   RelativePattern: class {
-    constructor(public base: string, public pattern: string) {}
+    constructor(
+      public base: string,
+      public pattern: string,
+    ) {}
   },
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   EventEmitter: class {
@@ -55,10 +58,16 @@ const minimalVscodeMock = () => ({
     registerCompletionItemProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
   },
   Hover: class {
-    constructor(public contents: unknown, public range?: unknown) {}
+    constructor(
+      public contents: unknown,
+      public range?: unknown,
+    ) {}
   },
   CompletionItem: class {
-    constructor(public label: string, public kind?: number) {}
+    constructor(
+      public label: string,
+      public kind?: number,
+    ) {}
   },
   CompletionItemKind: { Keyword: 13, Property: 9 },
   SnippetString: class {
@@ -207,7 +216,10 @@ describe('ModelfilesProvider.getChildren', () => {
         fire = vi.fn();
       },
       RelativePattern: class {
-        constructor(public base: string, public pattern: string) {}
+        constructor(
+          public base: string,
+          public pattern: string,
+        ) {}
       },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn().mockReturnValue('') })),
@@ -260,18 +272,34 @@ describe('handleNewModelfile', () => {
 
     vi.doMock('vscode', () => ({
       TreeItem: class {
-        constructor(public label: string, public collapsibleState: number) {}
+        constructor(
+          public label: string,
+          public collapsibleState: number,
+        ) {}
       },
       TreeItemCollapsibleState: { None: 0 },
-      ThemeIcon: class { constructor(public id: string) {} },
-      RelativePattern: class { constructor(public base: string, public pattern: string) {} },
+      ThemeIcon: class {
+        constructor(public id: string) {}
+      },
+      RelativePattern: class {
+        constructor(
+          public base: string,
+          public pattern: string,
+        ) {}
+      },
       Uri: { file: (fsPath: string) => ({ fsPath }) },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn().mockReturnValue('') })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         createFileSystemWatcher: vi.fn(() => ({
-          onDidCreate: vi.fn(), onDidDelete: vi.fn(), onDidChange: vi.fn(), dispose: vi.fn(),
+          onDidCreate: vi.fn(),
+          onDidDelete: vi.fn(),
+          onDidChange: vi.fn(),
+          dispose: vi.fn(),
         })),
         fs: {
           writeFile: vi.fn().mockImplementation((_uri: unknown, data: Buffer) => {
@@ -281,9 +309,7 @@ describe('handleNewModelfile', () => {
         openTextDocument: vi.fn().mockResolvedValue({ uri: { fsPath: '/tmp/test.modelfile' } }),
       },
       window: {
-        showInputBox: vi.fn()
-          .mockResolvedValueOnce('pirate-bot')
-          .mockResolvedValueOnce('You are a pirate. Arr!'),
+        showInputBox: vi.fn().mockResolvedValueOnce('pirate-bot').mockResolvedValueOnce('You are a pirate. Arr!'),
         showQuickPick: vi.fn().mockResolvedValue({ label: 'llama3.2:3b', description: 'local' }),
         showTextDocument: vi.fn(),
         showInformationMessage: vi.fn(),
@@ -297,24 +323,34 @@ describe('handleNewModelfile', () => {
         registerHoverProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
         registerCompletionItemProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       },
-      Hover: class { constructor(public contents: unknown) {} },
-      CompletionItem: class { constructor(public label: string, public kind?: number) {} },
+      Hover: class {
+        constructor(public contents: unknown) {}
+      },
+      CompletionItem: class {
+        constructor(
+          public label: string,
+          public kind?: number,
+        ) {}
+      },
       CompletionItemKind: { Keyword: 13, Property: 9 },
-      SnippetString: class { constructor(public value: string) {} },
-      MarkdownString: class { constructor(public value: string) {} },
+      SnippetString: class {
+        constructor(public value: string) {}
+      },
+      MarkdownString: class {
+        constructor(public value: string) {}
+      },
     }));
 
     mockClient = {
       list: vi.fn().mockResolvedValue({
-        models: [
-          { name: 'llama3.2:3b' },
-          { name: 'mistral:latest' },
-        ],
+        models: [{ name: 'llama3.2:3b' }, { name: 'mistral:latest' }],
       }),
     };
   });
 
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('creates a modelfile using chosen model and system prompt', async () => {
     const { handleNewModelfile } = await import('./modelfiles.js');
@@ -434,7 +470,7 @@ describe('handleBuildModelfile', () => {
 
   it('calls client.create with model name and modelfile content', async () => {
     const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
-    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' });
+    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
     expect(mockClient.create).toHaveBeenCalledWith(
@@ -447,7 +483,7 @@ describe('handleBuildModelfile', () => {
     vi.mocked(vscode.window.showInputBox).mockResolvedValue(undefined);
 
     const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
-    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' });
+    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
     expect(mockClient.create).not.toHaveBeenCalled();
@@ -456,7 +492,7 @@ describe('handleBuildModelfile', () => {
   it('refreshes local models on success', async () => {
     const vscode = await import('vscode');
     const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
-    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' });
+    const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ollama-copilot.refreshLocalModels');
