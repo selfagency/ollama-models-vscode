@@ -33,6 +33,18 @@ export interface ModelCapabilities {
 }
 
 /**
+ * Test connection to Ollama server
+ */
+export async function testConnection(client: Ollama): Promise<boolean> {
+  try {
+    await client.list();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch and parse model capabilities from an Ollama model
  * by inspecting the template and families metadata
  */
