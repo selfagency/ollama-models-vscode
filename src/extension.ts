@@ -65,6 +65,41 @@ export function setupChatParticipant(
 }
 
 /**
+ * Detect and offer to disable Copilot's conflicting built-in Ollama provider.
+ * That provider registers under vendor 'ollama' and is active whenever
+ * github.copilot.chat.ollama.url is non-empty.
+ */
+export async function handleBuiltInOllamaConflict(
+  windowApi?: Pick<typeof vscode.window, 'showWarningMessage' | 'showInformationMessage'>,
+  workspaceApi?: Pick<typeof vscode.workspace, 'getConfiguration'>,
+): Promise<void> {
+  const win = windowApi ?? vscode.window;
+  const ws = workspaceApi ?? vscode.workspace;
+
+  const config = ws.getConfiguration('github.copilot.chat');
+  const url = config.get<string>('ollama.url');
+  if (!url) return;
+
+  const selection = await win.showWarningMessage(
+    "Copilot's built-in Ollama provider is active and will show duplicate models alongside this extension. Disable it?",
+    'Disable Built-in Ollama Provider',
+  );
+
+  if (selection !== 'Disable Built-in Ollama Provider') return;
+
+  await (config as vscode.WorkspaceConfiguration).update(
+    'ollama.url',
+    '',
+    vscode.ConfigurationTarget.Global,
+  );
+
+  await win.showInformationMessage(
+    "Copilot's built-in Ollama provider has been disabled. Reload VS Code to apply.",
+    'Reload Window',
+  );
+}
+
+/**
  * Build and send a message to the language model
  */
 export async function handleChatRequest(
@@ -246,6 +281,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register modelfile manager
   registerModelfileManager(context, client, diagnostics);
+
+  // Detect and offer to disable Copilot's built-in Ollama provider (non-blocking)
+  void handleBuiltInOllamaConflict();
 
   // Test connection to Ollama server on startup (non-blocking)
   void (async () => {

@@ -96,9 +96,17 @@ export class LanguageModelDataPart {
   ) {}
 }
 
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 export const window = {
   showInputBox: vi.fn(),
   showQuickPick: vi.fn(),
+  showWarningMessage: vi.fn(),
+  showInformationMessage: vi.fn(),
 };
 
 export const lm = {

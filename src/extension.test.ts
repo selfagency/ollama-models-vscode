@@ -1079,6 +1079,123 @@ describe('handleChatRequest model selection', () => {
   });
 });
 
+describe('handleBuiltInOllamaConflict', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        constructor(public label: string) {}
+      },
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+      ProgressLocation: { Notification: 15 },
+      Disposable: class {
+        dispose = vi.fn();
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { joinPath: vi.fn().mockReturnValue(undefined), parse: vi.fn() },
+      window: {
+        createOutputChannel: vi.fn(() => ({
+          info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+          debug: vi.fn(), log: vi.fn(), show: vi.fn(),
+        })),
+        showWarningMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInputBox: vi.fn(),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        withProgress: vi.fn(async (_: any, cb: any) => cb({ report: vi.fn() })),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(), update: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      lm: {
+        registerLanguageModelChatProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        selectChatModels: vi.fn().mockResolvedValue([]),
+      },
+      chat: {
+        createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })),
+      },
+      LanguageModelChatMessage: {
+        User: vi.fn((c: string) => ({ content: c })),
+        Assistant: vi.fn((c: string) => ({ content: c })),
+      },
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+    }));
+  });
+
+  it('does nothing when github.copilot.chat.ollama.url is empty', async () => {
+    const showWarningMessage = vi.fn();
+    const mockConfig = { get: vi.fn().mockReturnValue(''), update: vi.fn() };
+    const getConfiguration = vi.fn().mockReturnValue(mockConfig);
+
+    const ext = await import('./extension.js');
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, { getConfiguration });
+
+    expect(showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when github.copilot.chat.ollama.url is undefined', async () => {
+    const showWarningMessage = vi.fn();
+    const mockConfig = { get: vi.fn().mockReturnValue(undefined), update: vi.fn() };
+    const getConfiguration = vi.fn().mockReturnValue(mockConfig);
+
+    const ext = await import('./extension.js');
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, { getConfiguration });
+
+    expect(showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a warning when the built-in Ollama URL is set', async () => {
+    const showWarningMessage = vi.fn().mockResolvedValue(undefined);
+    const mockConfig = { get: vi.fn().mockReturnValue('http://localhost:11434'), update: vi.fn() };
+    const getConfiguration = vi.fn().mockReturnValue(mockConfig);
+
+    const ext = await import('./extension.js');
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, { getConfiguration });
+
+    expect(showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining("built-in Ollama provider"),
+      'Disable Built-in Ollama Provider',
+    );
+    expect(mockConfig.update).not.toHaveBeenCalled();
+  });
+
+  it('clears the URL and shows reload prompt when user confirms', async () => {
+    const showWarningMessage = vi.fn().mockResolvedValue('Disable Built-in Ollama Provider');
+    const showInformationMessage = vi.fn().mockResolvedValue(undefined);
+    const mockConfig = {
+      get: vi.fn().mockReturnValue('http://localhost:11434'),
+      update: vi.fn().mockResolvedValue(undefined),
+    };
+    const getConfiguration = vi.fn().mockReturnValue(mockConfig);
+
+    const ext = await import('./extension.js');
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage }, { getConfiguration });
+
+    expect(mockConfig.update).toHaveBeenCalledWith('ollama.url', '', expect.anything());
+    expect(showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Reload VS Code'),
+      'Reload Window',
+    );
+  });
+});
+
 describe('handleConfigurationChange', () => {
   it('calls onLogLevelChange when log level configuration changes', async () => {
     const mockDiagnostics = { info: vi.fn() };
