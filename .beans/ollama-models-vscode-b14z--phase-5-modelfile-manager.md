@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-b14z
 title: 'Phase 5: Modelfile Manager'
-status: in-progress
+status: completed
 type: feature
 priority: high
 created_at: 2026-03-05T21:11:25Z
-updated_at: 2026-03-05T21:12:58Z
+updated_at: 2026-03-05T22:07:48Z
 ---
 
 Implement Modelfile language support and a Modelfile Manager sidebar pane for the Ollama VS Code extension.

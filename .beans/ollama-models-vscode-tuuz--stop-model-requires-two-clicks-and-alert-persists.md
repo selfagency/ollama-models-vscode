@@ -1,7 +1,7 @@
 ---
 # ollama-models-vscode-tuuz
 title: Stop model requires two clicks and alert persists
-status: ready
+status: todo
 type: fix
 priority: high
 created_at: 2026-03-05T22:03:16Z
