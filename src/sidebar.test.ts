@@ -251,6 +251,37 @@ describe('LocalModelsProvider', () => {
     libraryProvider.dispose();
   });
 
+  it('fetches from ?sort=newest URL when recency sort is active', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '<a href="/library/newmodel"></a>',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const libraryProvider = new LibraryModelsProvider(async () => new Set<string>(), undefined);
+    libraryProvider.setSortMode('recency');
+    await libraryProvider.getChildren();
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toBe('https://ollama.com/library?sort=newest');
+    libraryProvider.dispose();
+  });
+
+  it('fetches from plain /library URL when name sort is active', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '<a href="/library/alpha"></a>',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const libraryProvider = new LibraryModelsProvider(async () => new Set<string>(), undefined);
+    await libraryProvider.getChildren();
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toBe('https://ollama.com/library');
+    libraryProvider.dispose();
+  });
+
   it('shows status item when cloud API key is missing', async () => {
     const cloudProvider = new CloudModelsProvider(
       {
