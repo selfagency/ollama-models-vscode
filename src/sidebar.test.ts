@@ -158,12 +158,12 @@ describe('LocalModelsProvider', () => {
     expect(item.description).toContain('1m');
   });
 
-  it('uses circle-play icon for running models', () => {
+  it('uses play-circle icon for running models', () => {
     const localRunning = new ModelTreeItem('llama2:latest', 'local-running', 3826087936, 90_000);
     const cloudRunning = new ModelTreeItem('cloud/llama2:latest', 'cloud-running', undefined, 90_000);
 
-    expect((localRunning.iconPath as { id: string }).id).toBe('circle-play');
-    expect((cloudRunning.iconPath as { id: string }).id).toBe('circle-play');
+    expect((localRunning.iconPath as { id: string }).id).toBe('play-circle');
+    expect((cloudRunning.iconPath as { id: string }).id).toBe('play-circle');
   });
 
   it('uses stop-circle icon for stopped models', () => {
@@ -592,6 +592,59 @@ describe('LocalModelsProvider', () => {
   it('library-model item has Collapsed collapsible state', () => {
     const item = new ModelTreeItem('llama3.2', 'library-model');
     expect(item.collapsibleState).toBe(1); // TreeItemCollapsibleState.Collapsed
+  });
+
+  it('library-model-variant shows GB size in description', () => {
+    const bytes = Math.round(1.3 * 1024 ** 3);
+    const item = new ModelTreeItem('llama3.2:1b', 'library-model-variant', bytes);
+    expect(item.description).toBe('1.3 GB');
+  });
+
+  it('library-model-downloaded-variant shows MB size in description', () => {
+    const bytes = Math.round(780 * 1024 ** 2);
+    const item = new ModelTreeItem('llama3.2:1b', 'library-model-downloaded-variant', bytes);
+    expect(item.description).toBe('780 MB');
+  });
+
+  it('library variant without size has no description', () => {
+    const item = new ModelTreeItem('llama3.2:1b', 'library-model-variant');
+    expect(item.description).toBeFalsy();
+  });
+
+  it('fetchModelVariants extracts sizes from sm:hidden HTML blocks', async () => {
+    const variantHtml = [
+      '<a href="/library/llama3.2:1b" class="sm:hidden flex flex-col space-y-[6px] group text-[13px] px-4 py-3">',
+      '  <p class="flex text-neutral-500">1.3GB \u00b7 128K context window · Text</p>',
+      '</a>',
+      '<a href="/library/llama3.2:3b" class="sm:hidden flex flex-col space-y-[6px] group text-[13px] px-4 py-3">',
+      '  <p class="flex text-neutral-500">2.0GB \u00b7 128K context window · Text</p>',
+      '</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url === 'https://ollama.com/library') {
+          return Promise.resolve({ ok: true, text: async () => '<a href="/library/llama3.2"></a>' });
+        }
+        if (url === 'https://ollama.com/library/llama3.2') {
+          return Promise.resolve({ ok: true, text: async () => variantHtml });
+        }
+        return Promise.resolve({ ok: false, status: 404 });
+      }),
+    );
+
+    const libraryProvider = new LibraryModelsProvider(async () => new Set<string>(), undefined);
+    const parents = await libraryProvider.getChildren();
+    const parent = parents.find((item: any) => item.label === 'llama3.2');
+    const children = await libraryProvider.getChildren(parent);
+
+    const item1b = children.find((c: any) => c.label === 'llama3.2:1b');
+    const item3b = children.find((c: any) => c.label === 'llama3.2:3b');
+
+    expect(item1b?.description).toBe('1.3 GB');
+    expect(item3b?.description).toBe('2.0 GB');
+    libraryProvider.dispose();
   });
 
   it('getChildren with library-model parent fetches and returns variant children', async () => {

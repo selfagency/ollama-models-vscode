@@ -47,7 +47,7 @@ export class ModelTreeItem extends TreeItem {
     }
 
     if (type === 'local-running' || type === 'cloud-running') {
-      this.iconPath = createThemeIcon('circle-play');
+      this.iconPath = createThemeIcon('play-circle');
     } else if (type === 'local-stopped' || type === 'cloud-stopped') {
       this.iconPath = createThemeIcon('stop-circle');
     } else if (type === 'library-model-downloaded-variant') {
@@ -60,11 +60,16 @@ export class ModelTreeItem extends TreeItem {
       const sizeStr = this.formatSize(size);
       const durationStr = this.formatDuration(durationMs);
       this.description = [sizeStr, durationStr].filter(Boolean).join(' • ');
+    } else if (type === 'library-model-variant' || type === 'library-model-downloaded-variant') {
+      this.description = this.formatSize(size);
     }
   }
 
   private formatSize(bytes?: number): string {
     if (!bytes) return '';
+    if (bytes < 1024 ** 3) {
+      return Math.round(bytes / 1024 ** 2) + ' MB';
+    }
     const gb = bytes / 1024 ** 3;
     return gb.toFixed(1) + ' GB';
   }
@@ -670,6 +675,26 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
 
       const html = await response.text();
       const escapedName = modelName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Build a size map by parsing the mobile-layout (sm:hidden) anchor blocks,
+      // which each contain a size string like "1.3GB" or "780MB".
+      const sizeMap = new Map<string, number>();
+      const blockPattern = new RegExp(
+        `href="/library/(${escapedName}:[^"?#]+)" class="sm:hidden[^>]+>([\\s\\S]*?)</a>`,
+        'g',
+      );
+      for (const m of html.matchAll(blockPattern)) {
+        const name = typeof m[1] === 'string' ? decodeURIComponent(m[1]).trim() : '';
+        const sizeMatch = /(\d+(?:\.\d+)?)\s*(GB|MB|KB)/i.exec(m[2] ?? '');
+        if (name && sizeMatch) {
+          const value = parseFloat(sizeMatch[1]);
+          const unit = sizeMatch[2].toUpperCase();
+          if (unit === 'GB') sizeMap.set(name, Math.round(value * 1024 ** 3));
+          else if (unit === 'MB') sizeMap.set(name, Math.round(value * 1024 ** 2));
+          else sizeMap.set(name, Math.round(value * 1024));
+        }
+      }
+
       const variantPattern = new RegExp(`href="/library/(${escapedName}:[^"?#]+)"`, 'g');
       const matches = [...html.matchAll(variantPattern)];
       const variantNames = [
@@ -685,6 +710,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
         const item = new ModelTreeItem(
           name,
           isDownloaded ? 'library-model-downloaded-variant' : 'library-model-variant',
+          sizeMap.get(name),
         );
         item.tooltip = name;
         return item;
