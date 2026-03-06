@@ -291,22 +291,16 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       const role = msg.role === LanguageModelChatMessageRole.User ? 'user' : 'assistant';
       const ollamaMsg: Record<string, unknown> = { role };
 
-      // Extract and assemble content
-      const contentParts: (string | Record<string, unknown>)[] = [];
+      // Extract text and images in Ollama's expected shape
       let textContent = '';
+      const images: string[] = [];
 
       for (const part of msg.content) {
         if (part instanceof LanguageModelTextPart) {
           textContent += part.value;
         } else if (part instanceof LanguageModelDataPart) {
           const base64Data = typeof part.data === 'string' ? part.data : Buffer.from(part.data).toString('base64');
-
-          contentParts.push({
-            type: 'image',
-            image: {
-              url: `data:image/jpeg;base64,${base64Data}`,
-            },
-          });
+          images.push(base64Data);
         } else if (part instanceof LanguageModelToolCallPart) {
           ollamaMsg.tool_calls = ollamaMsg.tool_calls || [];
           (ollamaMsg.tool_calls as Record<string, unknown>[]).push({
@@ -326,14 +320,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         }
       }
 
-      if (textContent) {
-        contentParts.unshift(textContent);
+      // Ollama requires content to be a string (images are separate field)
+      if (textContent || images.length > 0) {
+        ollamaMsg.content = textContent;
       }
-
-      if (contentParts.length === 1 && typeof contentParts[0] === 'string') {
-        ollamaMsg.content = contentParts[0];
-      } else if (contentParts.length > 0) {
-        ollamaMsg.content = contentParts;
+      if (images.length > 0) {
+        ollamaMsg.images = images;
       }
 
       if (ollamaMsg.content || ollamaMsg.tool_calls) {
