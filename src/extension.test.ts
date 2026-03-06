@@ -957,8 +957,8 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
     expect(allCalls.some((v: string) => v.includes('Thinking') || v.includes('thinking'))).toBe(true);
     // Thinking content should be streamed
     expect(allCalls.some((v: string) => v.includes('step 1: consider options'))).toBe(true);
-    // Should close the details section before answer
-    expect(allCalls.some((v: string) => v.includes('</details>'))).toBe(true);
+    // Separator before answer
+    expect(allCalls.some((v: string) => v.includes('---'))).toBe(true);
     // Final answer
     expect(allCalls.some((v: string) => v.includes('The answer is 42.'))).toBe(true);
   });

@@ -374,7 +374,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         // Handle thinking tokens (reasoning phase)
         if (chunk.message?.thinking) {
           if (!thinkingStarted) {
-            progress.report(new LanguageModelTextPart('\n\n<details>\n<summary>💭 Thinking</summary>\n\n'));
+            progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
             thinkingStarted = true;
           }
           progress.report(new LanguageModelTextPart(chunk.message.thinking));
@@ -383,7 +383,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         // Stream text chunks immediately as they arrive
         if (chunk.message?.content) {
           if (thinkingStarted && !contentStarted) {
-            progress.report(new LanguageModelTextPart('\n\n</details>\n\n'));
+            progress.report(new LanguageModelTextPart('\n\n---\n\n'));
             contentStarted = true;
           }
           this.outputChannel.debug?.(`[Ollama] Streaming chunk: ${chunk.message.content.substring(0, 50)}`);
@@ -411,10 +411,6 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         if (chunk.done === true) {
           break;
         }
-      }
-
-      if (thinkingStarted && !contentStarted) {
-        progress.report(new LanguageModelTextPart('\n\n</details>\n\n'));
       }
     } catch (error) {
       this.outputChannel.exception('[Ollama] Chat response failed', error);

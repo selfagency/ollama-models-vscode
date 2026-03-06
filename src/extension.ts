@@ -318,7 +318,7 @@ export async function handleChatRequest(
 
         if (chunk.message?.thinking) {
           if (!thinkingStarted) {
-            stream.markdown('\n\n<details>\n<summary>💭 Thinking</summary>\n\n');
+            stream.markdown('\n\n*Thinking*\n\n');
             thinkingStarted = true;
           }
           stream.markdown(chunk.message.thinking);
@@ -326,7 +326,7 @@ export async function handleChatRequest(
 
         if (chunk.message?.content) {
           if (thinkingStarted && !contentStarted) {
-            stream.markdown('\n\n</details>\n\n');
+            stream.markdown('\n\n---\n\n*Response*\n\n');
             contentStarted = true;
           }
           outputChannel?.debug(`[Ollama] @ollama chunk: ${chunk.message.content.substring(0, 50)}`);
@@ -344,10 +344,6 @@ export async function handleChatRequest(
         if (chunk.done) {
           break;
         }
-      }
-
-      if (thinkingStarted && !contentStarted) {
-        stream.markdown('\n\n</details>\n\n');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

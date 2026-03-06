@@ -666,8 +666,8 @@ describe('OllamaChatModelProvider chat response', () => {
     expect(allValues.some((v: string) => v.includes('Thinking') || v.includes('thinking'))).toBe(true);
     // Should include thinking content
     expect(allValues.some((v: string) => v.includes('let me reason...'))).toBe(true);
-    // Should close the details section before answer
-    expect(allValues.some((v: string) => v.includes('</details>'))).toBe(true);
+    // Should include separator before answer
+    expect(allValues.some((v: string) => v.includes('---'))).toBe(true);
     // Should include answer
     expect(allValues.some((v: string) => v.includes('The answer is 42.'))).toBe(true);
   });
