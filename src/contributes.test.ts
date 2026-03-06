@@ -124,6 +124,8 @@ describe('package contributes integrity', () => {
     expect(prop).toBeDefined();
     expect(prop?.type).toBe('boolean');
     expect(prop?.default).toBe(true);
+  });
+
   it('does not declare the ollama-model-preview webview view', () => {
     const pkg = loadPackageJson();
     const explorerViews = pkg.contributes?.views?.['ollama-explorer'] ?? [];

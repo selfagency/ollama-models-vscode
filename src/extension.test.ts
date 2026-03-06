@@ -1000,9 +1000,6 @@ describe('activate', () => {
         constructor(public readonly insertText: string) {}
       },
       CancellationToken: class {},
-      InlineCompletionItem: class {
-        constructor(public readonly insertText: string) {}
-      },
     }));
 
     vi.doMock('./client.js', () => ({
