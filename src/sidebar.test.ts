@@ -282,6 +282,57 @@ describe('LocalModelsProvider', () => {
     libraryProvider.dispose();
   });
 
+  it('does not use stale results when sort mode changes during an in-flight fetch', async () => {
+    let resolveFirstFetch: ((value: { ok: boolean; text: () => Promise<string> }) => void) | undefined;
+
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url === 'https://ollama.com/library') {
+        return new Promise(resolve => {
+          resolveFirstFetch = value => resolve(value);
+        });
+      }
+      if (url === 'https://ollama.com/library?sort=newest') {
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<a href="/library/zeta"></a>',
+        });
+      }
+      // Model preview fetches — fail silently so they don't interfere
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    vi.stubGlobal('fetch', mockFetch);
+
+    const libraryProvider = new LibraryModelsProvider(async () => new Set<string>(), undefined);
+
+    // Start the initial fetch (name sort, default) but leave it pending.
+    const firstFetchPromise = libraryProvider.getChildren();
+
+    // Change sort mode while the first fetch is still in-flight.
+    libraryProvider.setSortMode('recency');
+
+    // Now resolve the original (stale) fetch response.
+    resolveFirstFetch?.({
+      ok: true,
+      text: async () => '<a href="/library/alpha"></a>',
+    });
+    await firstFetchPromise;
+
+    // After the sort change, requesting children should trigger a new fetch
+    // and use the response corresponding to the new sort mode.
+    const modelsAfterSortChange = await libraryProvider.getChildren();
+
+    const libraryFetchUrls = mockFetch.mock.calls
+      .map(([url]: [string]) => url)
+      .filter(
+        (url: string) => url === 'https://ollama.com/library' || url === 'https://ollama.com/library?sort=newest',
+      );
+    expect(libraryFetchUrls).toHaveLength(2);
+    expect(modelsAfterSortChange[0].label).toBe('zeta');
+
+    libraryProvider.dispose();
+  });
+
   it('shows status item when cloud API key is missing', async () => {
     const cloudProvider = new CloudModelsProvider(
       {

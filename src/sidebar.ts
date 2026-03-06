@@ -538,6 +538,8 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   refresh(): void {
     this.cache = [];
     this.cacheTimeMs = 0;
+    this.loadPromise = null;
+    this.cacheGeneration++;
     this.treeChangeEmitter.fire(null);
   }
 
