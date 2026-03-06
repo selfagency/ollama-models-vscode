@@ -1194,12 +1194,13 @@ export function registerSidebar(
   logChannel?: DiagnosticsLogger,
   onLocalModelsChanged?: () => void,
 ): void {
+  let libraryProvider: LibraryModelsProvider | undefined;
   const localProvider = new LocalModelsProvider(client, logChannel, () => {
     onLocalModelsChanged?.();
-    libraryProvider.refreshVariantStates();
+    libraryProvider?.refreshVariantStates();
   });
   const cloudProvider = new CloudModelsProvider(context, logChannel);
-  const libraryProvider = new LibraryModelsProvider(
+  libraryProvider = new LibraryModelsProvider(
     () => cloudProvider.getCloudModelNamesForFilter(),
     logChannel,
     () => localProvider.getCachedLocalModelNames(),
