@@ -509,7 +509,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(...subscriptions);
 
   // Register sidebar view
-  registerSidebar(context, client, diagnostics);
+  registerSidebar(context, client, diagnostics, () => provider.refreshModels());
 
   // Register modelfile manager
   registerModelfileManager(context, client, diagnostics);

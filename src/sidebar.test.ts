@@ -122,6 +122,16 @@ describe('LocalModelsProvider', () => {
     expect(models[1].label).toBe('mistral:latest');
   });
 
+  it('invokes onLocalModelsChanged callback when local models are refreshed', async () => {
+    const onLocalModelsChanged = vi.fn();
+    const callbackProvider = new LocalModelsProvider(mockClient, undefined, onLocalModelsChanged);
+
+    callbackProvider.refresh();
+
+    expect(onLocalModelsChanged).toHaveBeenCalledTimes(1);
+    callbackProvider.dispose();
+  });
+
   it('adds tooltip process details for local models', async () => {
     const models = await provider.getChildren();
     expect(models[0].tooltip).toContain('llama2:latest');

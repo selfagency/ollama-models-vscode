@@ -178,6 +178,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   constructor(
     private client: Ollama,
     private logChannel?: DiagnosticsLogger,
+    private onLocalModelsChanged?: () => void,
   ) {
     this.startAutoRefresh();
   }
@@ -305,6 +306,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   refresh(): void {
     this.logChannel?.debug('[Ollama] Manual refresh triggered');
     this.treeChangeEmitter.fire(null);
+    this.onLocalModelsChanged?.();
   }
 
   /**
@@ -1047,8 +1049,13 @@ export function handleStopCloudModel(item: ModelTreeItem, localProvider: LocalMo
 /**
  * Register sidebar with VS Code
  */
-export function registerSidebar(context: ExtensionContext, client: Ollama, logChannel?: DiagnosticsLogger): void {
-  const localProvider = new LocalModelsProvider(client, logChannel);
+export function registerSidebar(
+  context: ExtensionContext,
+  client: Ollama,
+  logChannel?: DiagnosticsLogger,
+  onLocalModelsChanged?: () => void,
+): void {
+  const localProvider = new LocalModelsProvider(client, logChannel, onLocalModelsChanged);
   const cloudProvider = new CloudModelsProvider(context, logChannel);
   const libraryProvider = new LibraryModelsProvider(() => cloudProvider.getCloudModelNamesForFilter(), logChannel);
   const syncLibrarySortContext = () => {
