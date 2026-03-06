@@ -354,7 +354,7 @@ describe('OllamaChatModelProvider error handling', () => {
 
     expect(models).toHaveLength(2);
     expect(models[0]?.name).toBe('Llama2');
-    expect(models[0]?.detail).toBe('Ollama');
+    expect(models[0]?.detail).toBe('🦙 Ollama');
     expect(models[0]?.capabilities?.toolCalling).toBe(false);
   });
 
@@ -450,7 +450,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'test-model',
       name: 'Test',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -493,7 +493,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'test-model',
       name: 'Test',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -537,7 +537,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'vision-model',
       name: 'Vision',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -594,7 +594,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'tool-model',
       name: 'Tools',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -647,7 +647,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'test-model',
       name: 'Test',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -699,7 +699,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'qwen3:8b',
       name: 'Qwen3 8B',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -752,7 +752,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'qwen3:8b',
       name: 'Qwen3 8B',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -797,7 +797,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'llama3.2:latest',
       name: 'Llama 3.2',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -851,7 +851,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'cogito:latest',
       name: 'Cogito Latest',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
@@ -917,7 +917,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const model = {
       id: 'cogito:latest',
       name: 'Cogito Latest',
-      family: 'ollama',
+      family: '🦙 Ollama',
       version: '1.0.0',
       maxInputTokens: 100,
       maxOutputTokens: 100,
