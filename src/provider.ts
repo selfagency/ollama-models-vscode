@@ -1,4 +1,4 @@
-import { Ollama, type ShowResponse } from 'ollama';
+import { Ollama, type ChatResponse, type ShowResponse } from 'ollama';
 import {
   CancellationToken,
   EventEmitter,
@@ -36,6 +36,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   private toolCallIdMap: Map<string, string> = new Map();
   private reverseToolCallIdMap: Map<string, string> = new Map();
   private thinkingModels = new Set<string>();
+  private nonThinkingModels = new Set<string>();
 
   readonly onDidChangeLanguageModelChatInformation = this.modelsChangeEventEmitter.event;
 
@@ -245,6 +246,18 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   }
 
   /**
+   * Returns true when the Ollama SDK reports that the model does not support
+   * the `think` option (HTTP 400 "does not support thinking").
+   */
+  private isThinkingNotSupportedError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      error.name === 'ResponseError' &&
+      error.message.toLowerCase().includes('does not support thinking')
+    );
+  }
+
+  /**
    * Check if model supports tool use
    */
   private isToolModel(modelResponse: unknown): boolean {
@@ -323,16 +336,36 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     // loop below provides safe cooperative cancellation instead.
     const perRequestClient = await getOllamaClient(this.context);
 
-    const shouldThink = this.thinkingModels.has(model.id) || isThinkingModelId(model.id);
+    let shouldThink =
+      (this.thinkingModels.has(model.id) || isThinkingModelId(model.id)) &&
+      !this.nonThinkingModels.has(model.id);
 
     try {
-      const response = await perRequestClient.chat({
-        model: model.id,
-        messages: ollamaMessages,
-        stream: true,
-        tools,
-        ...(shouldThink ? { think: true } : {}),
-      });
+      let response: AsyncIterable<ChatResponse>;
+
+      try {
+        response = await perRequestClient.chat({
+          model: model.id,
+          messages: ollamaMessages,
+          stream: true,
+          tools,
+          ...(shouldThink ? { think: true } : {}),
+        });
+      } catch (innerError) {
+        if (shouldThink && this.isThinkingNotSupportedError(innerError)) {
+          this.thinkingModels.delete(model.id);
+          this.nonThinkingModels.add(model.id);
+          shouldThink = false;
+          response = await perRequestClient.chat({
+            model: model.id,
+            messages: ollamaMessages,
+            stream: true,
+            tools,
+          });
+        } else {
+          throw innerError;
+        }
+      }
 
       let thinkingStarted = false;
       let contentStarted = false;

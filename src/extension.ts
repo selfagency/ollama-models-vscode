@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promises as fsPromises } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { Ollama } from 'ollama';
+import type { ChatResponse, Ollama } from 'ollama';
 import * as vscode from 'vscode';
 import { getOllamaClient, testConnection } from './client.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
@@ -280,14 +280,35 @@ export async function handleChatRequest(
           .join(''),
       }));
 
-      const shouldThink = isThinkingModelId(modelId);
+      const shouldThinkInitial = isThinkingModelId(modelId);
 
-      const response = await client.chat({
-        model: modelId,
-        messages: ollamaMessages,
-        stream: true,
-        ...(shouldThink ? { think: true } : {}),
-      });
+      let shouldThink = shouldThinkInitial;
+      let response: AsyncIterable<ChatResponse>;
+
+      try {
+        response = await client.chat({
+          model: modelId,
+          messages: ollamaMessages,
+          stream: true,
+          ...(shouldThink ? { think: true } : {}),
+        });
+      } catch (chatError) {
+        if (
+          shouldThink &&
+          chatError instanceof Error &&
+          chatError.name === 'ResponseError' &&
+          chatError.message.toLowerCase().includes('does not support thinking')
+        ) {
+          shouldThink = false;
+          response = await client.chat({
+            model: modelId,
+            messages: ollamaMessages,
+            stream: true,
+          });
+        } else {
+          throw chatError;
+        }
+      }
 
       let thinkingStarted = false;
       let contentStarted = false;

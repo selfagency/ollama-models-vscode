@@ -762,6 +762,137 @@ describe('OllamaChatModelProvider chat response', () => {
     const chatArgs = chat.mock.calls[0]?.[0];
     expect(chatArgs?.think).toBeFalsy();
   });
+
+  it('retries without think when model returns ResponseError "does not support thinking"', async () => {
+    const thinkingError = Object.assign(
+      new Error('"cogito:latest" does not support thinking'),
+      { name: 'ResponseError', status_code: 400 },
+    );
+
+    const chat = vi.fn()
+      .mockRejectedValueOnce(thinkingError)
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { message: { content: 'Here is the answer.' }, done: true };
+        })(),
+      );
+
+    vi.mocked(getOllamaClient).mockResolvedValue({ chat, abort: vi.fn() } as any);
+
+    const provider = new OllamaChatModelProvider(
+      { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
+      { list: vi.fn(), show: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+    );
+
+    const progress = { report: vi.fn() };
+    const token = { isCancellationRequested: false };
+
+    const model = {
+      id: 'cogito:latest',
+      name: 'Cogito Latest',
+      family: 'ollama',
+      version: '1.0.0',
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      capabilities: { imageInput: false, toolCalling: false },
+    };
+
+    const message = {
+      role: LanguageModelChatMessageRole.User,
+      name: undefined,
+      content: [new LanguageModelTextPart('hi')],
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      model as any,
+      [message as any],
+      { tools: [], toolMode: 'auto' } as any,
+      progress as any,
+      token as any,
+    );
+
+    // First call should have used think: true (cogito matches the regex)
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(chat.mock.calls[0]?.[0]?.think).toBe(true);
+    // Second call (retry) should not pass think
+    expect(chat.mock.calls[1]?.[0]?.think).toBeUndefined();
+    // Content should be reported (not an error message)
+    const allValues = progress.report.mock.calls.map((c: any[]) => c[0]?.value ?? '');
+    expect(allValues.some((v: string) => v.includes('Here is the answer.'))).toBe(true);
+    expect(allValues.every((v: string) => !v.startsWith('Error:'))).toBe(true);
+  });
+
+  it('does not retry again on second call when model is in nonThinkingModels', async () => {
+    const thinkingError = Object.assign(
+      new Error('"cogito:latest" does not support thinking'),
+      { name: 'ResponseError', status_code: 400 },
+    );
+
+    const chat = vi.fn()
+      .mockRejectedValueOnce(thinkingError)
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { message: { content: 'first response' }, done: true };
+        })(),
+      )
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { message: { content: 'second response' }, done: true };
+        })(),
+      );
+
+    vi.mocked(getOllamaClient).mockResolvedValue({ chat, abort: vi.fn() } as any);
+
+    const provider = new OllamaChatModelProvider(
+      { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
+      { list: vi.fn(), show: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+    );
+
+    const progress = { report: vi.fn() };
+    const token = { isCancellationRequested: false };
+
+    const model = {
+      id: 'cogito:latest',
+      name: 'Cogito Latest',
+      family: 'ollama',
+      version: '1.0.0',
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      capabilities: { imageInput: false, toolCalling: false },
+    };
+
+    const message = {
+      role: LanguageModelChatMessageRole.User,
+      name: undefined,
+      content: [new LanguageModelTextPart('hi')],
+    };
+
+    // First call — triggers retry and blacklists the model
+    await provider.provideLanguageModelChatResponse(
+      model as any,
+      [message as any],
+      { tools: [], toolMode: 'auto' } as any,
+      progress as any,
+      token as any,
+    );
+
+    progress.report.mockClear();
+
+    // Second call — should NOT pass think: true (model is now blacklisted)
+    await provider.provideLanguageModelChatResponse(
+      model as any,
+      [message as any],
+      { tools: [], toolMode: 'auto' } as any,
+      progress as any,
+      token as any,
+    );
+
+    // Total: 3 calls (1 failed + 1 retry + 1 second request without think)
+    expect(chat).toHaveBeenCalledTimes(3);
+    expect(chat.mock.calls[2]?.[0]?.think).toBeUndefined();
+  });
 });
 
 describe('isThinkingModelId', () => {
