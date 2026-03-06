@@ -120,13 +120,29 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     try {
       const response = await this.client.show({ model: modelId });
 
+      // Prefer the model's actual context window; fall back to the user override, then 0.
+      const modelinfo = (response as Record<string, unknown>).modelinfo as Record<string, unknown> | undefined;
+      const parameters = (response as Record<string, unknown>).parameters as string | undefined;
+      let contextLength = getContextLengthOverride();
+      if (!contextLength) {
+        // Ollama ≥0.3 exposes context_length in modelinfo
+        const infoCtx = modelinfo?.['llama.context_length'] ?? modelinfo?.['context_length'];
+        if (typeof infoCtx === 'number' && infoCtx > 0) {
+          contextLength = infoCtx;
+        } else if (parameters) {
+          // Fall back to parsing the num_ctx line from the parameters string
+          const match = /^num_ctx\s+(\d+)/m.exec(parameters);
+          if (match) contextLength = parseInt(match[1], 10);
+        }
+      }
+
       return {
         id: modelId,
         name: formatModelName(modelId),
         family: 'ollama',
         version: '1.0.0',
-        maxInputTokens: getContextLengthOverride(),
-        maxOutputTokens: getContextLengthOverride(),
+        maxInputTokens: contextLength,
+        maxOutputTokens: contextLength,
         capabilities: {
           imageInput: this.isVisionModel(response),
           toolCalling: this.isToolModel(response),

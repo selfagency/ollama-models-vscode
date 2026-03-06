@@ -67,9 +67,8 @@ export function setupChatParticipant(
 
 /**
  * Detect and offer to disable Copilot's conflicting built-in Ollama provider.
- * Detects by querying the LM API for models registered under vendor 'ollama'.
- * Removes the entry by editing chatLanguageModels.json in the VS Code profile
- * folder, located two levels above the extension's globalStorageUri.
+ * Detects by reading chatLanguageModels.json from the VS Code profile folder,
+ * which is located two levels above the extension's globalStorageUri.
  */
 export async function handleBuiltInOllamaConflict(
   windowApi?: Pick<typeof vscode.window, 'showWarningMessage' | 'showInformationMessage'>,
@@ -77,10 +76,24 @@ export async function handleBuiltInOllamaConflict(
   context?: Pick<vscode.ExtensionContext, 'globalStorageUri'>,
 ): Promise<void> {
   const win = windowApi ?? vscode.window;
-  const lm = lmApi ?? vscode.lm;
 
-  const conflictModels = await lm.selectChatModels({ vendor: 'ollama' });
-  if (!conflictModels.length) return;
+  if (!context) return;
+
+  // Locate chatLanguageModels.json: globalStorageUri is …/profiles/<hash>/globalStorage/<extId>/
+  // Two levels up = the profile folder that owns this file.
+  const profileDir = dirname(dirname(context.globalStorageUri.fsPath));
+  const modelsFile = join(profileDir, 'chatLanguageModels.json');
+
+  let models: Array<Record<string, unknown>>;
+  try {
+    const raw = await fsPromises.readFile(modelsFile, 'utf-8');
+    models = JSON.parse(raw) as Array<Record<string, unknown>>;
+  } catch {
+    return; // File doesn't exist or isn't readable — nothing to do
+  }
+
+  const hasBuiltInOllama = models.some(m => m['vendor'] === 'ollama');
+  if (!hasBuiltInOllama) return;
 
   const selection = await win.showWarningMessage(
     "Copilot's built-in Ollama provider is active and will show duplicate models alongside this extension. Disable it?",
@@ -89,19 +102,11 @@ export async function handleBuiltInOllamaConflict(
 
   if (selection !== 'Disable Built-in Ollama Provider') return;
 
-  if (context) {
-    try {
-      // globalStorageUri is e.g. …/profiles/<hash>/globalStorage/<extId>/
-      // Going up two levels reaches the profile folder that contains chatLanguageModels.json.
-      const profileDir = dirname(dirname(context.globalStorageUri.fsPath));
-      const modelsFile = join(profileDir, 'chatLanguageModels.json');
-      const raw = await fsPromises.readFile(modelsFile, 'utf-8');
-      const models = JSON.parse(raw) as Array<Record<string, unknown>>;
-      const filtered = models.filter(m => m['vendor'] !== 'ollama');
-      await fsPromises.writeFile(modelsFile, JSON.stringify(filtered, null, 2) + '\n', 'utf-8');
-    } catch {
-      // File write failed; the reload message below still prompts the user
-    }
+  try {
+    const filtered = models.filter(m => m['vendor'] !== 'ollama');
+    await fsPromises.writeFile(modelsFile, JSON.stringify(filtered, null, 2) + '\n', 'utf-8');
+  } catch {
+    // File write failed; still prompt to reload so the user knows to act
   }
 
   const choice = await win.showInformationMessage(

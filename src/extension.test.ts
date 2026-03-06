@@ -1080,8 +1080,24 @@ describe('handleChatRequest model selection', () => {
 });
 
 describe('handleBuiltInOllamaConflict', () => {
+  const mockStoragePath = '/mock/profiles/abc123/globalStorage/selfagency.ollama-copilot';
+  const mockContext = { globalStorageUri: { fsPath: mockStoragePath } };
+  const modelsWithOllama = JSON.stringify([
+    { name: 'Ollama', vendor: 'ollama', url: 'http://localhost:11434' },
+    { name: 'Anthropic', vendor: 'anthropic', apiKey: 'key' },
+  ]);
+
+  let mockReadFile: ReturnType<typeof vi.fn>;
+  let mockWriteFile: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
+    mockReadFile = vi.fn().mockResolvedValue(modelsWithOllama);
+    mockWriteFile = vi.fn().mockResolvedValue(undefined);
+
     vi.resetModules();
+    vi.doMock('node:fs', () => ({
+      promises: { readFile: mockReadFile, writeFile: mockWriteFile },
+    }));
     vi.doMock('vscode', () => ({
       TreeItem: class {
         constructor(public label: string) {}
@@ -1140,25 +1156,25 @@ describe('handleBuiltInOllamaConflict', () => {
     }));
   });
 
-  it('does nothing when no conflicting models are registered', async () => {
+  it('does nothing when no context is provided', async () => {
     const showWarningMessage = vi.fn();
-    const selectChatModels = vi.fn().mockResolvedValue([]);
-
     const ext = await import('./extension.js');
-    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, { selectChatModels });
-
-    expect(selectChatModels).toHaveBeenCalledWith({ vendor: 'ollama' });
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() });
     expect(showWarningMessage).not.toHaveBeenCalled();
   });
 
-  it('shows a warning when conflicting Ollama models are present', async () => {
-    const showWarningMessage = vi.fn().mockResolvedValue(undefined);
-    const mockModel = { id: 'ollama:llama3', vendor: 'ollama', name: 'Llama 3' };
-    const selectChatModels = vi.fn().mockResolvedValue([mockModel]);
-
+  it('does nothing when chatLanguageModels.json has no ollama entry', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify([{ name: 'Anthropic', vendor: 'anthropic' }]));
+    const showWarningMessage = vi.fn();
     const ext = await import('./extension.js');
-    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, { selectChatModels });
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, undefined, mockContext as any);
+    expect(showWarningMessage).not.toHaveBeenCalled();
+  });
 
+  it('shows a warning when the ollama vendor entry is present', async () => {
+    const showWarningMessage = vi.fn().mockResolvedValue(undefined);
+    const ext = await import('./extension.js');
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage: vi.fn() }, undefined, mockContext as any);
     expect(showWarningMessage).toHaveBeenCalledWith(
       expect.stringContaining('built-in Ollama provider'),
       'Disable Built-in Ollama Provider',
@@ -1168,26 +1184,23 @@ describe('handleBuiltInOllamaConflict', () => {
   it('does nothing when user dismisses the warning', async () => {
     const showWarningMessage = vi.fn().mockResolvedValue(undefined);
     const showInformationMessage = vi.fn();
-    const mockModel = { id: 'ollama:llama3', vendor: 'ollama', name: 'Llama 3' };
-    const selectChatModels = vi.fn().mockResolvedValue([mockModel]);
-
     const ext = await import('./extension.js');
-    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage }, { selectChatModels });
-
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage }, undefined, mockContext as any);
     expect(showWarningMessage).toHaveBeenCalled();
     expect(showInformationMessage).not.toHaveBeenCalled();
   });
 
-  it('shows reload prompt and triggers reload when user confirms', async () => {
+  it('removes ollama entry, writes file, and triggers reload when user confirms', async () => {
     const showWarningMessage = vi.fn().mockResolvedValue('Disable Built-in Ollama Provider');
     const showInformationMessage = vi.fn().mockResolvedValue('Reload Window');
-    const mockModel = { id: 'ollama:llama3', vendor: 'ollama', name: 'Llama 3' };
-    const selectChatModels = vi.fn().mockResolvedValue([mockModel]);
-
     const ext = await import('./extension.js');
-    // No context passed — file write is skipped, but reload should still trigger
-    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage }, { selectChatModels });
+    await ext.handleBuiltInOllamaConflict({ showWarningMessage, showInformationMessage }, undefined, mockContext as any);
 
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('chatLanguageModels.json'),
+      expect.not.stringContaining('"ollama"'),
+      'utf-8',
+    );
     expect(showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('Reload VS Code'),
       'Reload Window',
