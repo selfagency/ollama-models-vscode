@@ -5,7 +5,7 @@ status: in-progress
 type: fix
 priority: medium
 created_at: 2026-03-05T22:03:06Z
-updated_at: 2026-03-06T06:10:12Z
+updated_at: 2026-03-06T06:10:27Z
 ---
 
 ## Todo
@@ -16,4 +16,4 @@ updated_at: 2026-03-06T06:10:12Z
 - [x] `refresh()` also nulls `loadPromise` + increments `cacheGeneration` to prevent stale write-back
 - [x] `getLibraryModels` passes `sortMode` to fetch and guards cache write with generation check
 - [x] Run tests green
-- [ ] Commit and push
+- [x] Commit and push
