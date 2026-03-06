@@ -427,6 +427,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
 
   private cache: string[] = [];
   private cacheTimeMs = 0;
+  private cacheGeneration = 0;
   private refreshTimeout: NodeJS.Timeout | null = null;
   private refreshIntervals: NodeJS.Timeout[] = [];
   private loadPromise: Promise<string[]> | null = null;
@@ -455,6 +456,8 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   refresh(): void {
     this.cache = [];
     this.cacheTimeMs = 0;
+    this.loadPromise = null;
+    this.cacheGeneration++;
     this.treeChangeEmitter.fire(null);
   }
 
@@ -469,7 +472,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
 
     this.sortMode = mode;
     void workspace.getConfiguration('ollama').update('librarySortMode', mode, true);
-    this.treeChangeEmitter.fire(null);
+    this.refresh();
   }
 
   dispose(): void {
@@ -496,10 +499,13 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       return this.buildItems(pendingNames);
     }
 
-    this.loadPromise = this.fetchLibraryModelNames(12000)
+    const gen = this.cacheGeneration;
+    this.loadPromise = this.fetchLibraryModelNames(12000, this.sortMode)
       .then(names => {
-        this.cache = names;
-        this.cacheTimeMs = Date.now();
+        if (this.cacheGeneration === gen) {
+          this.cache = names;
+          this.cacheTimeMs = Date.now();
+        }
         return names;
       })
       .catch(error => {
@@ -518,14 +524,17 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
     return this.buildItems(names);
   }
 
-  private async fetchLibraryModelNames(timeoutMs: number): Promise<string[]> {
-    this.logChannel?.debug(`[Ollama] Fetching remote model library from ollama.com (timeout=${timeoutMs}ms)`);
+  private async fetchLibraryModelNames(timeoutMs: number, sortMode: LibrarySortMode): Promise<string[]> {
+    this.logChannel?.debug(
+      `[Ollama] Fetching remote model library from ollama.com (timeout=${timeoutMs}ms, sort=${sortMode})`,
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const url = sortMode === 'recency' ? 'https://ollama.com/library?sort=newest' : 'https://ollama.com/library';
 
     try {
-      const response = await fetch('https://ollama.com/library', {
+      const response = await fetch(url, {
         method: 'GET',
         signal: controller.signal,
       });
