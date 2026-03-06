@@ -15,8 +15,8 @@ Use circle-play and stop-circle for the icons and stop and play for the clickabl
 
 - [x] Set bean status to in-progress
 - [x] Locate sidebar rendering and command contribution points
-- [ ] Add failing tests for left-side status icons on local/cloud running+stopped model items
-- [ ] Implement `ThemeIcon` assignment in `ModelTreeItem` for running/stopped states
-- [ ] Update command contribution icons to `$(play)` and `$(stop)` for clickable actions
-- [ ] Run focused tests for `sidebar` and then full unit test suite
+- [x] Add failing tests for left-side status icons on local/cloud running+stopped model items
+- [x] Implement status icon assignment in `ModelTreeItem` for running/stopped states
+- [x] Update command contribution icons to `$(play)` and `$(stop)` for clickable actions
+- [x] Run focused tests for `sidebar` and then full unit test suite
 - [ ] Verify inline context-menu behavior manually in the tree views

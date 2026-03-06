@@ -24,7 +24,13 @@ describe('LocalModelsProvider', () => {
           this.label = label;
         }
       },
-      ThemeIcon: class {},
+      ThemeIcon: class {
+        id: string;
+
+        constructor(id: string) {
+          this.id = id;
+        }
+      },
       TreeItemCollapsibleState: {
         None: 0,
         Collapsed: 1,
@@ -149,6 +155,22 @@ describe('LocalModelsProvider', () => {
     const item = new ModelTreeItem('llama2:latest', 'local-running', 3826087936, 90_000);
     expect(item.description).toContain('GB');
     expect(item.description).toContain('1m');
+  });
+
+  it('uses circle-play icon for running models', () => {
+    const localRunning = new ModelTreeItem('llama2:latest', 'local-running', 3826087936, 90_000);
+    const cloudRunning = new ModelTreeItem('cloud/llama2:latest', 'cloud-running', undefined, 90_000);
+
+    expect((localRunning.iconPath as { id: string }).id).toBe('circle-play');
+    expect((cloudRunning.iconPath as { id: string }).id).toBe('circle-play');
+  });
+
+  it('uses stop-circle icon for stopped models', () => {
+    const localStopped = new ModelTreeItem('mistral:latest', 'local-stopped', 4109738016);
+    const cloudStopped = new ModelTreeItem('cloud/mistral:latest', 'cloud-stopped');
+
+    expect((localStopped.iconPath as { id: string }).id).toBe('stop-circle');
+    expect((cloudStopped.iconPath as { id: string }).id).toBe('stop-circle');
   });
 
   it('returns tree item unchanged', () => {

@@ -39,6 +39,12 @@ export class ModelTreeItem extends TreeItem {
     this.contextValue = type;
     this.collapsibleState = TreeItemCollapsibleState.None;
 
+    if (type === 'local-running' || type === 'cloud-running') {
+      this.iconPath = { id: 'circle-play' } as unknown as { id: string };
+    } else if (type === 'local-stopped' || type === 'cloud-stopped') {
+      this.iconPath = { id: 'stop-circle' } as unknown as { id: string };
+    }
+
     if (type === 'local-stopped' || type === 'cloud-stopped') {
       this.description = this.formatSize(size);
     } else if (type === 'local-running' || type === 'cloud-running') {
