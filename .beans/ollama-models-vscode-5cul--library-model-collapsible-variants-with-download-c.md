@@ -12,13 +12,13 @@ Library items show multiple model variants under them in a collapsible tree. Par
 
 ## Todo
 
-- [ ] Add `library-model-variant` and `library-model-downloaded-variant` to ModelTreeItem type union
-- [ ] Set library-model items to TreeItemCollapsibleState.Collapsed
-- [ ] Filter variant-format names from parent list
-- [ ] Add cachedLocalModelNames field + getCachedLocalModelNames() to LocalModelsProvider
-- [ ] Add variantsCache + fetchModelVariants to LibraryModelsProvider
-- [ ] Update getChildren to serve variant children
-- [ ] Update handlePullModelFromLibrary guard to accept variant types
-- [ ] Update package.json menus for new context values
-- [ ] Wire getCachedLocalModelNames in registerSidebar
-- [ ] Write and pass all tests
+- [x] Add `library-model-variant` and `library-model-downloaded-variant` to ModelTreeItem type union
+- [x] Set library-model items to TreeItemCollapsibleState.Collapsed
+- [x] Filter variant-format names from parent list
+- [x] Add cachedLocalModelNames field + getCachedLocalModelNames() to LocalModelsProvider
+- [x] Add variantsCache + fetchModelVariants to LibraryModelsProvider
+- [x] Update getChildren to serve variant children
+- [x] Update handlePullModelFromLibrary guard to accept variant types
+- [x] Update package.json menus for new context values
+- [x] Wire getCachedLocalModelNames in registerSidebar
+- [x] Write and pass all tests
