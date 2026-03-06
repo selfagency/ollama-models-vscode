@@ -1015,9 +1015,14 @@ describe('Extracted command handlers', () => {
         showInputBox: vi.fn().mockResolvedValue('llama3:8b'),
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
-        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
-          await task({ report: progressReport });
-        }),
+        withProgress: vi.fn(
+          async (
+            _opts: unknown,
+            task: (p: { report: typeof progressReport }, t: unknown) => Promise<void>,
+          ) => {
+            await task({ report: progressReport }, { isCancellationRequested: false, onCancellationRequested: vi.fn() });
+          },
+        ),
       },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn() })),
@@ -1109,9 +1114,14 @@ describe('Extracted command handlers', () => {
       window: {
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
-        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
-          await task({ report: progressReport });
-        }),
+        withProgress: vi.fn(
+          async (
+            _opts: unknown,
+            task: (p: { report: typeof progressReport }, t: unknown) => Promise<void>,
+          ) => {
+            await task({ report: progressReport }, { isCancellationRequested: false, onCancellationRequested: vi.fn() });
+          },
+        ),
       },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn() })),
@@ -1129,6 +1139,77 @@ describe('Extracted command handlers', () => {
     const reportCalls = progressReport.mock.calls.map((c: any) => c[0].message as string);
     expect(reportCalls.some(msg => msg.includes('%'))).toBe(true);
     expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it('handlePullModelFromLibrary cancels download when token fires', async () => {
+    vi.resetModules();
+
+    const mockAbort = vi.fn();
+    const mockShowError = vi.fn();
+    const mockShowInfo = vi.fn();
+
+    // Stream that throws to simulate an aborted connection
+    async function* abortedStream() {
+      throw new Error('Request aborted');
+    }
+
+    const mockPull = vi.fn().mockReturnValue(abortedStream());
+
+    const mockToken = {
+      isCancellationRequested: true,
+      onCancellationRequested: vi.fn((fn: () => void) => {
+        fn();
+        return { dispose: vi.fn() };
+      }),
+    };
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        description?: string;
+        contextValue?: string;
+        collapsibleState?: number;
+        tooltip?: string;
+        command?: unknown;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showInformationMessage: mockShowInfo,
+        showErrorMessage: mockShowError,
+        withProgress: vi.fn(
+          async (
+            _opts: unknown,
+            task: (p: { report: ReturnType<typeof vi.fn> }, t: typeof mockToken) => Promise<void>,
+          ) => {
+            await task({ report: vi.fn() }, mockToken);
+          },
+        ),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+
+    const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
+
+    const item = new ModelTreeItem('mistral:7b', 'library-model-variant');
+    await handlePullModelFromLibrary(item, { pull: mockPull, abort: mockAbort } as any, {
+      refresh: vi.fn(),
+    } as any);
+
+    expect(mockAbort).toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockShowInfo).toHaveBeenCalledWith('Download of mistral:7b cancelled');
   });
 
   it('local models show capability badges in description', async () => {
@@ -1236,9 +1317,14 @@ describe('Extracted command handlers', () => {
       window: {
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
-        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
-          await task({ report: progressReport });
-        }),
+        withProgress: vi.fn(
+          async (
+            _opts: unknown,
+            task: (p: { report: typeof progressReport }, t: unknown) => Promise<void>,
+          ) => {
+            await task({ report: progressReport }, { isCancellationRequested: false, onCancellationRequested: vi.fn() });
+          },
+        ),
       },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn() })),
@@ -1289,9 +1375,14 @@ describe('Extracted command handlers', () => {
       window: {
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
-        withProgress: vi.fn(async (_opts: unknown, task: (p: { report: typeof progressReport }) => Promise<void>) => {
-          await task({ report: progressReport });
-        }),
+        withProgress: vi.fn(
+          async (
+            _opts: unknown,
+            task: (p: { report: typeof progressReport }, t: unknown) => Promise<void>,
+          ) => {
+            await task({ report: progressReport }, { isCancellationRequested: false, onCancellationRequested: vi.fn() });
+          },
+        ),
       },
       workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn() })),

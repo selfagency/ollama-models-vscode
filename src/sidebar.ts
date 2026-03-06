@@ -997,8 +997,12 @@ async function pullModelWithProgress(
   logChannel?: DiagnosticsLogger,
 ): Promise<void> {
   await window.withProgress(
-    { location: ProgressLocation.Notification, title: `Pulling ${modelName}`, cancellable: false },
-    async progress => {
+    { location: ProgressLocation.Notification, title: `Pulling ${modelName}`, cancellable: true },
+    async (progress, token) => {
+      token.onCancellationRequested(() => {
+        client.abort();
+      });
+
       try {
         const stream = await client.pull({ model: modelName, stream: true });
         let lastCompleted = 0;
@@ -1037,6 +1041,10 @@ async function pullModelWithProgress(
         localProvider.refresh();
         window.showInformationMessage(`Model ${modelName} pulled successfully`);
       } catch (error) {
+        if (token.isCancellationRequested) {
+          window.showInformationMessage(`Download of ${modelName} cancelled`);
+          return;
+        }
         logChannel?.exception?.(`[Ollama] Failed to pull model ${modelName}`, error);
         const msg = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to pull model: ${msg}`);
