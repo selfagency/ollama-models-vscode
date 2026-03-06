@@ -11,8 +11,6 @@ import {
   TreeItem,
   TreeItemCollapsibleState,
   Uri,
-  WebviewView,
-  WebviewViewProvider,
   window,
   workspace,
 } from 'vscode';
@@ -172,77 +170,6 @@ async function fetchModelPagePreview(
     return { title, description };
   } finally {
     clearTimeout(timeout);
-  }
-}
-
-export class ModelPreviewViewProvider implements WebviewViewProvider {
-  private view: WebviewView | undefined;
-
-  resolveWebviewView(webviewView: WebviewView): void {
-    this.view = webviewView;
-    webviewView.webview.options = { enableScripts: false };
-    webviewView.webview.html = this.renderHtml(
-      'Model Details',
-      'Select a model in Local, Cloud, or Library to see details.',
-    );
-  }
-
-  setLoading(modelName: string): void {
-    if (!this.view) {
-      return;
-    }
-    this.view.webview.html = this.renderHtml(modelName, 'Loading model details...');
-  }
-
-  setModelPreview(modelName: string, title: string, description: string): void {
-    if (!this.view) {
-      return;
-    }
-
-    const modelUrl = getLibraryModelUrl(modelName);
-    this.view.webview.html = this.renderHtml(title, description, modelName, {
-      href: modelUrl,
-      label: 'Open on ollama.com ↗',
-    });
-  }
-
-  setModelDetails(title: string, modelName: string, description: string): void {
-    if (!this.view) {
-      return;
-    }
-
-    this.view.webview.html = this.renderHtml(title, description, modelName);
-  }
-
-  setError(modelName: string, message: string): void {
-    if (!this.view) {
-      return;
-    }
-
-    const modelUrl = getLibraryModelUrl(modelName);
-    this.view.webview.html = this.renderHtml(modelName, `Could not load model details: ${message}`, modelName, {
-      href: modelUrl,
-      label: 'Open on ollama.com ↗',
-    });
-  }
-
-  private renderHtml(title: string, body: string, _modelName?: string, link?: { href: string; label: string }): string {
-    const cspSource = this.view?.webview.cspSource ?? "'none'";
-    const linkLine = link
-      ? `<p style="margin:0;"><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></p>`
-      : '';
-
-    return `<!doctype html>
-<html>
-  <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} https:; font-src ${cspSource};">
-  </head>
-  <body style="font-family:var(--vscode-font-family);padding:12px;line-height:1.5;">
-    <h3 style="margin:0 0 8px 0;">${escapeHtml(title)}</h3>
-    <p style="margin:0 0 10px 0;">${escapeHtml(body)}</p>
-    ${linkLine}
-  </body>
-</html>`;
   }
 }
 
@@ -1082,44 +1009,6 @@ export function handleOpenLibraryModelPage(item: ModelTreeItem): void {
 }
 
 /**
- * Command handler: show model details
- */
-export function handleShowModelDetails(
-  item: ModelTreeItem,
-  previewProvider: ModelPreviewViewProvider,
-  _logChannel?: DiagnosticsLogger,
-): void {
-  if (!item || item.type === 'status') {
-    return;
-  }
-
-  if (item.type === 'library-model') {
-    previewProvider.setLoading(item.label);
-    void commands.executeCommand('ollama-model-preview.focus');
-    void fetchModelPagePreview(item.label)
-      .then(preview => {
-        previewProvider.setModelPreview(item.label, preview.title, preview.description);
-      })
-      .catch(error => {
-        const message = error instanceof Error ? error.message : String(error);
-        previewProvider.setError(item.label, message);
-      });
-    return;
-  }
-
-  const location = item.type.startsWith('cloud-') ? 'Cloud' : 'Local';
-  const status = item.type.endsWith('running') ? 'Running' : 'Stopped';
-  const descriptionParts = [`Location: ${location}`, `Status: ${status}`];
-
-  if (item.description) {
-    descriptionParts.push(`Info: ${item.description}`);
-  }
-
-  previewProvider.setModelDetails('Model Details', item.label, descriptionParts.join(' • '));
-  void commands.executeCommand('ollama-model-preview.focus');
-}
-
-/**
  * Command handler: start model
  */
 export function handleStartModel(item: ModelTreeItem, localProvider: LocalModelsProvider): void {
@@ -1162,8 +1051,6 @@ export function registerSidebar(context: ExtensionContext, client: Ollama, logCh
   const localProvider = new LocalModelsProvider(client, logChannel);
   const cloudProvider = new CloudModelsProvider(context, logChannel);
   const libraryProvider = new LibraryModelsProvider(() => cloudProvider.getCloudModelNamesForFilter(), logChannel);
-  const previewProvider = new ModelPreviewViewProvider();
-
   const syncLibrarySortContext = () => {
     const mode = libraryProvider.getSortMode();
     void commands.executeCommand('setContext', 'ollama.librarySortMode', mode);
@@ -1177,7 +1064,6 @@ export function registerSidebar(context: ExtensionContext, client: Ollama, logCh
     window.registerTreeDataProvider('ollama-local-models', localProvider),
     window.registerTreeDataProvider('ollama-library-models', libraryProvider),
     window.registerTreeDataProvider('ollama-cloud-models', cloudProvider),
-    window.registerWebviewViewProvider('ollama-model-preview', previewProvider),
     commands.registerCommand('ollama-copilot.refreshSidebar', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLocalModels', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLibrary', () => handleRefreshLibrary(libraryProvider)),
@@ -1206,9 +1092,6 @@ export function registerSidebar(context: ExtensionContext, client: Ollama, logCh
     ),
     commands.registerCommand('ollama-copilot.openLibraryModelPage', (item: ModelTreeItem) =>
       handleOpenLibraryModelPage(item),
-    ),
-    commands.registerCommand('ollama-copilot.showModelDetails', (item: ModelTreeItem) =>
-      handleShowModelDetails(item, previewProvider),
     ),
     commands.registerCommand('ollama-copilot.startModel', (item: ModelTreeItem) =>
       handleStartModel(item, localProvider),

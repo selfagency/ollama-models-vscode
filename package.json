@@ -107,11 +107,6 @@
           "name": "Library"
         },
         {
-          "id": "ollama-model-preview",
-          "name": "Model Details",
-          "type": "webview"
-        },
-        {
           "icon": "$(file-code)",
           "id": "ollama-modelfiles",
           "name": "Modelfiles"
@@ -195,12 +190,6 @@
         "command": "ollama-copilot.openLibraryModelPage",
         "title": "Open Ollama Model Page",
         "icon": "$(link-external)",
-        "category": "Ollama"
-      },
-      {
-        "command": "ollama-copilot.previewLibraryModel",
-        "title": "Ollama Model Details",
-        "icon": "$(preview)",
         "category": "Ollama"
       },
       {
@@ -341,11 +330,6 @@
           "command": "ollama-copilot.openLibraryModelPage",
           "when": "view == ollama-library-models && viewItem == library-model",
           "group": "inline@2"
-        },
-        {
-          "command": "ollama-copilot.previewLibraryModel",
-          "when": "view == ollama-library-models && viewItem == library-model",
-          "group": "navigation@1"
         },
         {
           "command": "ollama-copilot.startCloudModel",

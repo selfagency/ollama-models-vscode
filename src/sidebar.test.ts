@@ -36,7 +36,6 @@ describe('LocalModelsProvider', () => {
       },
       window: {
         registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
-        registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
         withProgress: vi.fn(async (_options: unknown, callback: () => Promise<void>) => callback()),
         showInputBox: vi.fn(),
         showErrorMessage: vi.fn(),
@@ -705,41 +704,6 @@ describe('Extracted command handlers', () => {
     handleOpenLibraryModelPage(item);
 
     expect(handleOpenLibraryModelPage).toBeDefined();
-  });
-
-  it('handleShowModelDetails returns early for status items', async () => {
-    const { handleShowModelDetails, ModelTreeItem } = await import('./sidebar.js');
-
-    const mockPreviewProvider = {
-      setLoading: vi.fn(),
-      setModelPreview: vi.fn(),
-      setError: vi.fn(),
-      setModelDetails: vi.fn(),
-    } as any;
-
-    const item = new ModelTreeItem('Status', 'status');
-
-    handleShowModelDetails(item, mockPreviewProvider);
-
-    expect(mockPreviewProvider.setModelDetails).not.toHaveBeenCalled();
-  });
-
-  it('handleShowModelDetails shows local model details', async () => {
-    const { handleShowModelDetails, ModelTreeItem } = await import('./sidebar.js');
-
-    const mockPreviewProvider = {
-      setLoading: vi.fn(),
-      setModelPreview: vi.fn(),
-      setError: vi.fn(),
-      setModelDetails: vi.fn(),
-    } as any;
-
-    const item = new ModelTreeItem('test-model', 'local-running', 1024);
-    item.description = '1GB • running';
-
-    handleShowModelDetails(item, mockPreviewProvider);
-
-    expect(mockPreviewProvider.setModelDetails).toHaveBeenCalled();
   });
 
   it('handlePullModel handles model name input', async () => {
