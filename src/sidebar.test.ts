@@ -68,7 +68,6 @@ describe('LocalModelsProvider', () => {
           get: vi.fn((key: string) => {
             if (key === 'localModelRefreshInterval') return 0;
             if (key === 'libraryRefreshInterval') return 0;
-            if (key === 'librarySortMode') return 'name';
             return undefined;
           }),
           update: vi.fn().mockResolvedValue(undefined),
@@ -129,8 +128,37 @@ describe('LocalModelsProvider', () => {
     const models = await provider.getChildren();
 
     expect(models).toHaveLength(2);
-    expect(models[0].label).toBe('llama2:latest');
-    expect(models[1].label).toBe('mistral:latest');
+    expect(models[0].label).toBe('llama');
+    expect(models[1].label).toBe('mistral');
+
+    const llamaChildren = await provider.getChildren(models[0]);
+    const mistralChildren = await provider.getChildren(models[1]);
+    expect(llamaChildren[0].label).toBe('llama2:latest');
+    expect(mistralChildren[0].label).toBe('mistral:latest');
+  });
+
+  it('groups qwen3 and qwen3.x families under qwen', async () => {
+    const qwenProvider = new LocalModelsProvider(
+      {
+        list: vi.fn().mockResolvedValue({
+          models: [
+            { name: 'qwen3.5', size: 10 },
+            { name: 'qwen3-coder-next', size: 10 },
+            { name: 'qwen3-vl', size: 10 },
+          ],
+        }),
+        ps: vi.fn().mockResolvedValue({ models: [] }),
+      } as unknown as Ollama,
+      undefined,
+    );
+
+    const groups = await qwenProvider.getChildren();
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe('qwen');
+
+    const children = await qwenProvider.getChildren(groups[0]);
+    expect(children.map((item: any) => item.label)).toEqual(['qwen3-coder-next', 'qwen3-vl', 'qwen3.5']);
+    qwenProvider.dispose();
   });
 
   it('invokes onLocalModelsChanged callback when local models are refreshed', async () => {
@@ -144,7 +172,9 @@ describe('LocalModelsProvider', () => {
   });
 
   it('adds tooltip process details for local models', async () => {
-    const models = await provider.getChildren();
+    const groups = await provider.getChildren();
+    const llamaGroup = groups.find((item: any) => item.label === 'llama');
+    const models = await provider.getChildren(llamaGroup);
     expect(models[0].tooltip).toContain('llama2:latest');
     expect(models[0].tooltip).toContain('abc123');
     expect(models[0].tooltip).toContain('GPU');
@@ -270,39 +300,6 @@ describe('LocalModelsProvider', () => {
     libraryProvider.dispose();
   });
 
-  it('can sort library by recency order when selected', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: async () => '<a href="/library/zeta"></a><a href="/library/alpha"></a>',
-      }),
-    );
-    const libraryProvider = new LibraryModelsProvider(undefined);
-    libraryProvider.setSortMode('recency');
-
-    const models = await libraryProvider.getChildren();
-    expect(models[0].label).toBe('zeta');
-    expect(models[1].label).toBe('alpha');
-    libraryProvider.dispose();
-  });
-
-  it('fetches from ?sort=newest URL when recency sort is active', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => '<a href="/library/newmodel"></a>',
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    const libraryProvider = new LibraryModelsProvider(undefined);
-    libraryProvider.setSortMode('recency');
-    await libraryProvider.getChildren();
-
-    const calledUrl = mockFetch.mock.calls[0][0] as string;
-    expect(calledUrl).toBe('https://ollama.com/library?sort=newest');
-    libraryProvider.dispose();
-  });
-
   it('fetches from plain /library URL when name sort is active', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -318,19 +315,26 @@ describe('LocalModelsProvider', () => {
     libraryProvider.dispose();
   });
 
-  it('does not use stale results when sort mode changes during an in-flight fetch', async () => {
+  it('does not use stale results when refresh is called during an in-flight fetch', async () => {
     let resolveFirstFetch: ((value: { ok: boolean; text: () => Promise<string> }) => void) | undefined;
+    let libraryFetchCount = 0;
 
     const mockFetch = vi.fn().mockImplementation((url: string) => {
       if (url === 'https://ollama.com/library') {
-        return new Promise(resolve => {
-          resolveFirstFetch = value => resolve(value);
-        });
-      }
-      if (url === 'https://ollama.com/library?sort=newest') {
+        libraryFetchCount++;
+        if (libraryFetchCount === 1) {
+          return new Promise(resolve => {
+            resolveFirstFetch = value => resolve(value);
+          });
+        }
         return Promise.resolve({
           ok: true,
-          text: async () => '<a href="/library/zeta"></a>',
+          text: async () => '<a href="/library/alpha"></a>',
+        });
+      }
+      if (url === 'https://ollama.com/library/alpha') {
+        return new Promise(resolve => {
+          resolve({ ok: false, status: 404 });
         });
       }
       // Model preview fetches — fail silently so they don't interfere
@@ -341,11 +345,11 @@ describe('LocalModelsProvider', () => {
 
     const libraryProvider = new LibraryModelsProvider(undefined);
 
-    // Start the initial fetch (name sort, default) but leave it pending.
+    // Start the initial fetch but leave it pending.
     const firstFetchPromise = libraryProvider.getChildren();
 
-    // Change sort mode while the first fetch is still in-flight.
-    libraryProvider.setSortMode('recency');
+    // Trigger refresh while the first fetch is still in-flight.
+    libraryProvider.refresh();
 
     // Now resolve the original (stale) fetch response.
     resolveFirstFetch?.({
@@ -354,17 +358,13 @@ describe('LocalModelsProvider', () => {
     });
     await firstFetchPromise;
 
-    // After the sort change, requesting children should trigger a new fetch
-    // and use the response corresponding to the new sort mode.
-    const modelsAfterSortChange = await libraryProvider.getChildren();
+    const modelsAfterRefresh = await libraryProvider.getChildren();
 
     const libraryFetchUrls = mockFetch.mock.calls
       .map(call => String(call[0]))
-      .filter(
-        (url: string) => url === 'https://ollama.com/library' || url === 'https://ollama.com/library?sort=newest',
-      );
+      .filter((url: string) => url === 'https://ollama.com/library');
     expect(libraryFetchUrls).toHaveLength(2);
-    expect(modelsAfterSortChange[0].label).toBe('zeta');
+    expect(modelsAfterRefresh[0].label).toBe('alpha');
 
     libraryProvider.dispose();
   });
@@ -415,8 +415,10 @@ describe('LocalModelsProvider', () => {
       undefined,
     );
 
-    const models = await localProvider.getChildren();
-    const model = models?.find((m: any) => m.label === 'llama2');
+    const groups = await localProvider.getChildren();
+    const group = groups.find((m: any) => m.label === 'llama');
+    const models = await localProvider.getChildren(group as any);
+    const model = models.find((m: any) => m.label === 'llama2');
     expect(model).toBeDefined();
     expect(deleteModel).toBeDefined();
     localProvider.dispose();
@@ -437,8 +439,10 @@ describe('LocalModelsProvider', () => {
       undefined,
     );
 
-    const models = await localProvider.getChildren();
-    const model = models?.find((m: any) => m.label === 'llama2');
+    const groups = await localProvider.getChildren();
+    const group = groups.find((m: any) => m.label === 'llama');
+    const models = await localProvider.getChildren(group as any);
+    const model = models.find((m: any) => m.label === 'llama2');
     expect(model?.type).toBe('local-running');
     expect(generateModel).toBeDefined();
     localProvider.dispose();
@@ -474,25 +478,6 @@ describe('LocalModelsProvider', () => {
 
     vi.useRealTimers();
     localProvider.dispose();
-  });
-
-  it('library provider sort mode configuration', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: async () => '<a href="/library/model1"></a>',
-      }),
-    );
-    const libraryProvider = new LibraryModelsProvider(undefined);
-
-    libraryProvider.setSortMode('recency');
-    expect(libraryProvider.getSortMode()).toBe('recency');
-
-    libraryProvider.setSortMode('name');
-    expect(libraryProvider.getSortMode()).toBe('name');
-
-    libraryProvider.dispose();
   });
 
   it('cloud provider handles empty API key', async () => {
@@ -546,8 +531,9 @@ describe('LocalModelsProvider', () => {
       undefined,
     );
 
-    const models = await localProvider.getChildren();
-    expect(models).toHaveLength(1);
+    const groups = await localProvider.getChildren();
+    expect(groups).toHaveLength(1);
+    const models = await localProvider.getChildren(groups[0]);
     expect(models[0].description).toBeDefined();
     localProvider.dispose();
   });
@@ -639,9 +625,11 @@ describe('LocalModelsProvider', () => {
     );
 
     const libraryProvider = new LibraryModelsProvider(undefined);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
-    const children = await libraryProvider.getChildren(parent);
+    const children = await libraryProvider.getChildren(parent as any);
 
     const item1b = children.find((c: any) => c.label === 'llama3.2:1b');
     const item3b = children.find((c: any) => c.label === 'llama3.2:3b');
@@ -669,14 +657,45 @@ describe('LocalModelsProvider', () => {
     );
 
     const libraryProvider = new LibraryModelsProvider(undefined);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
     expect(parent).toBeDefined();
 
-    const children = await libraryProvider.getChildren(parent);
+    const children = await libraryProvider.getChildren(parent as any);
     expect(children.length).toBeGreaterThan(0);
     expect(children.some((c: any) => c.label === 'llama3.2:1b')).toBe(true);
     expect(children.some((c: any) => c.label === 'llama3.2:3b')).toBe(true);
+    libraryProvider.dispose();
+  });
+
+  it('collapses redundant singleton library model parent under same-named group', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url === 'https://ollama.com/library') {
+          return Promise.resolve({ ok: true, text: async () => '<a href="/library/codegemma"></a>' });
+        }
+        if (url === 'https://ollama.com/library/codegemma') {
+          return Promise.resolve({
+            ok: true,
+            text: async () => '<a href="/library/codegemma:latest"></a><a href="/library/codegemma:7b"></a>',
+          });
+        }
+        return Promise.resolve({ ok: false, status: 404 });
+      }),
+    );
+
+    const libraryProvider = new LibraryModelsProvider(undefined);
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'codegemma');
+    expect(group).toBeDefined();
+
+    const children = await libraryProvider.getChildren(group as any);
+    expect(children.some((c: any) => c.label === 'codegemma:latest')).toBe(true);
+    expect(children.some((c: any) => c.label === 'codegemma:7b')).toBe(true);
+    expect(children.some((c: any) => c.type === 'library-model')).toBe(false);
     libraryProvider.dispose();
   });
 
@@ -699,9 +718,11 @@ describe('LocalModelsProvider', () => {
     } as any;
     const libraryProvider = new LibraryModelsProvider(undefined);
     libraryProvider.setLocalProvider(localProvider);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
-    const children = await libraryProvider.getChildren(parent);
+    const children = await libraryProvider.getChildren(parent as any);
 
     const downloaded = children.find((c: any) => c.label === 'llama3.2:1b');
     expect(downloaded?.contextValue).toBe('library-model-downloaded-variant');
@@ -728,9 +749,11 @@ describe('LocalModelsProvider', () => {
     } as any;
     const libraryProvider = new LibraryModelsProvider(undefined);
     libraryProvider.setLocalProvider(localProvider);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
-    const children = await libraryProvider.getChildren(parent);
+    const children = await libraryProvider.getChildren(parent as any);
 
     const undownloaded = children.find((c: any) => c.label === 'llama3.2:3b');
     expect(undownloaded?.contextValue).toBe('library-model-variant');
@@ -765,9 +788,11 @@ describe('LocalModelsProvider', () => {
     );
 
     const libraryProvider = new LibraryModelsProvider(undefined);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
-    const children = await libraryProvider.getChildren(parent);
+    const children = await libraryProvider.getChildren(parent as any);
 
     const item1b = children.find((c: any) => c.label === 'llama3.2:1b');
     expect(item1b?.description).toBe('1.3 GB');
@@ -795,18 +820,20 @@ describe('LocalModelsProvider', () => {
     } as any;
     const libraryProvider = new LibraryModelsProvider(undefined);
     libraryProvider.setLocalProvider(localProvider);
-    const parents = await libraryProvider.getChildren();
+    const groups = await libraryProvider.getChildren();
+    const group = groups.find((item: any) => item.label === 'llama');
+    const parents = await libraryProvider.getChildren(group as any);
     const parent = parents.find((item: any) => item.label === 'llama3.2');
 
     // First call: model not yet downloaded
-    const childrenBefore = await libraryProvider.getChildren(parent);
+    const childrenBefore = await libraryProvider.getChildren(parent as any);
     expect(childrenBefore.find((c: any) => c.label === 'llama3.2:1b')?.contextValue).toBe('library-model-variant');
 
     // Simulate download
     localModels = new Set(['llama3.2:1b']);
 
     // Second call uses cached raw metadata but re-materializes with updated local state
-    const childrenAfter = await libraryProvider.getChildren(parent);
+    const childrenAfter = await libraryProvider.getChildren(parent as any);
     expect(childrenAfter.find((c: any) => c.label === 'llama3.2:1b')?.contextValue).toBe(
       'library-model-downloaded-variant',
     );
@@ -870,36 +897,6 @@ describe('Extracted command handlers', () => {
     handleRefreshCloudModels(mockProvider);
 
     expect(mockProvider.refresh).toHaveBeenCalled();
-  });
-
-  it('handleSortLibraryByRecency sets sort mode and syncs context', async () => {
-    const { handleSortLibraryByRecency } = await import('./sidebar.js');
-
-    const mockProvider = {
-      setSortMode: vi.fn(),
-    } as any;
-
-    const mockSync = vi.fn();
-
-    handleSortLibraryByRecency(mockProvider, mockSync);
-
-    expect(mockProvider.setSortMode).toHaveBeenCalledWith('recency');
-    expect(mockSync).toHaveBeenCalled();
-  });
-
-  it('handleSortLibraryByName sets sort mode to name', async () => {
-    const { handleSortLibraryByName } = await import('./sidebar.js');
-
-    const mockProvider = {
-      setSortMode: vi.fn(),
-    } as any;
-
-    const mockSync = vi.fn();
-
-    handleSortLibraryByName(mockProvider, mockSync);
-
-    expect(mockProvider.setSortMode).toHaveBeenCalledWith('name');
-    expect(mockSync).toHaveBeenCalled();
   });
 
   it('handleDeleteModel deletes local model when confirmed', async () => {
@@ -1058,7 +1055,7 @@ describe('Extracted command handlers', () => {
     expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model');
   });
 
-  it('handleStartCloudModel starts cloud-stopped models', async () => {
+  it('handleStartCloudModel starts cloud-stopped models with explicit tag', async () => {
     const { handleStartCloudModel, ModelTreeItem } = await import('./sidebar.js');
 
     const mockProvider = {
@@ -1067,9 +1064,28 @@ describe('Extracted command handlers', () => {
 
     const item = new ModelTreeItem('test-model:cloud', 'cloud-stopped');
 
-    handleStartCloudModel(item, mockProvider);
+    await handleStartCloudModel(item, mockProvider);
 
     expect(mockProvider.startModel).toHaveBeenCalledWith('test-model:cloud');
+  });
+
+  it('handleStartCloudModel resolves base name to :cloud / :-cloud tag', async () => {
+    const { handleStartCloudModel, ModelTreeItem } = await import('./sidebar.js');
+
+    const mockProvider = {
+      startModel: vi.fn(),
+    } as any;
+
+    const mockCloudProvider = {
+      resolveRunnableCloudModelName: vi.fn().mockResolvedValue('cogito-2.1:671b-cloud'),
+    } as any;
+
+    const item = new ModelTreeItem('cogito-2.1', 'cloud-stopped');
+
+    await handleStartCloudModel(item, mockProvider, mockCloudProvider);
+
+    expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('cogito-2.1');
+    expect(mockProvider.startModel).toHaveBeenCalledWith('cogito-2.1:671b-cloud');
   });
 
   it('handleStopCloudModel stops cloud-running models', async () => {
@@ -1466,7 +1482,10 @@ describe('Extracted command handlers', () => {
     await Promise.resolve();
 
     expect(models).toHaveLength(1);
-    const item = models[0];
+    const group = models[0];
+    expect(group.label).toBe('llama');
+    const childModels = await localProvider.getChildren(group);
+    const item = childModels[0];
     expect(item.label).toBe('llama3-tools:latest');
     expect(item.description).toContain('[tools]');
     localProvider.dispose();
