@@ -257,6 +257,9 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private treeChangeEmitter = new EventEmitter<ModelTreeItem | null>();
   readonly onDidChangeTreeData: Event<ModelTreeItem | null> = this.treeChangeEmitter.event;
 
+  filterText = '';
+  grouped = true;
+
   private refreshIntervals: NodeJS.Timeout[] = [];
   private localModelCapabilitiesCache = new Map<string, ModelCapabilities>();
   private localModelCapabilitiesInFlight = new Set<string>();
@@ -286,12 +289,30 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         return models;
       }
 
+      // Flat mode: return all models sorted A-Z
+      if (!this.grouped) {
+        const filterLower = this.filterText.toLowerCase();
+        return models
+          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+          .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+      }
+
       // Group models by family
       const groups = groupModelsByFamily(models);
 
+      // Apply filter: keep only families where the family name or any child matches
+      const filterLower = this.filterText.toLowerCase();
+      const filteredEntries = Array.from(groups.entries())
+        .filter(([familyName, familyModels]) =>
+          !filterLower ||
+          familyName.toLowerCase().includes(filterLower) ||
+          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+        )
+        .sort((a, b) => a[0].localeCompare(b[0]));
+
       // Always create explicit family parent groups.
       const result: ModelTreeItem[] = [];
-      for (const [familyName, familyModels] of Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+      for (const [familyName, familyModels] of filteredEntries) {
         const groupItem = new ModelTreeItem(familyName, 'model-group');
         groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
         result.push(groupItem);
@@ -594,6 +615,9 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   private treeChangeEmitter = new EventEmitter<ModelTreeItem | null>();
   readonly onDidChangeTreeData: Event<ModelTreeItem | null> = this.treeChangeEmitter.event;
 
+  filterText = '';
+  grouped = true;
+
   private cache: string[] = [];
   private cacheTimeMs = 0;
   private cacheGeneration = 0;
@@ -686,12 +710,30 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       return models;
     }
 
+    // Flat mode: return all library models sorted A-Z
+    if (!this.grouped) {
+      const filterLower = this.filterText.toLowerCase();
+      return models
+        .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+        .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+    }
+
     // Group models by family
     const groups = groupModelsByFamily(models);
 
+    // Apply filter: keep only families where the family name or any child matches
+    const filterLower = this.filterText.toLowerCase();
+    const filteredEntries = Array.from(groups.entries())
+      .filter(([familyName, familyModels]) =>
+        !filterLower ||
+        familyName.toLowerCase().includes(filterLower) ||
+        familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+      )
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
     // Always create explicit family parent groups.
     const result: ModelTreeItem[] = [];
-    for (const [familyName, familyModels] of Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [familyName, familyModels] of filteredEntries) {
       const groupItem = new ModelTreeItem(familyName, 'model-group');
       groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
       result.push(groupItem);
@@ -935,6 +977,9 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private treeChangeEmitter = new EventEmitter<ModelTreeItem | null>();
   readonly onDidChangeTreeData: Event<ModelTreeItem | null> = this.treeChangeEmitter.event;
 
+  filterText = '';
+  grouped = true;
+
   private cache: ModelTreeItem[] = [];
   private cacheTimeMs = 0;
   private loadPromise: Promise<ModelTreeItem[]> | null = null;
@@ -968,12 +1013,30 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         return [makeStatusItem('No cloud models found')];
       }
 
+      // Flat mode: return all cloud models sorted A-Z
+      if (!this.grouped) {
+        const filterLower = this.filterText.toLowerCase();
+        return models
+          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+          .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+      }
+
       // Group models by family
       const groups = groupModelsByFamily(models);
 
+      // Apply filter: keep only families where the family name or any child matches
+      const filterLower = this.filterText.toLowerCase();
+      const filteredEntries = Array.from(groups.entries())
+        .filter(([familyName, familyModels]) =>
+          !filterLower ||
+          familyName.toLowerCase().includes(filterLower) ||
+          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+        )
+        .sort((a, b) => a[0].localeCompare(b[0]));
+
       // Always create explicit family parent groups.
       const result: ModelTreeItem[] = [];
-      for (const [familyName, familyModels] of Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+      for (const [familyName, familyModels] of filteredEntries) {
         const groupItem = new ModelTreeItem(familyName, 'model-group');
         groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
         result.push(groupItem);
@@ -1504,10 +1567,95 @@ export function registerSidebar(
 
   logChannel?.info('[Ollama] Sidebar providers initialized');
 
+  const localTreeView = window.createTreeView('ollama-local-models', { treeDataProvider: localProvider });
+  const libraryTreeView = window.createTreeView('ollama-library-models', { treeDataProvider: libraryProvider });
+  const cloudTreeView = window.createTreeView('ollama-cloud-models', { treeDataProvider: cloudProvider });
+
   context.subscriptions.push(
-    window.registerTreeDataProvider('ollama-local-models', localProvider),
-    window.registerTreeDataProvider('ollama-library-models', libraryProvider),
-    window.registerTreeDataProvider('ollama-cloud-models', cloudProvider),
+    localTreeView,
+    libraryTreeView,
+    cloudTreeView,
+    commands.registerCommand('ollama-copilot.collapseLocalModels', () =>
+      commands.executeCommand('workbench.actions.treeView.ollama-local-models.collapseAll'),
+    ),
+    commands.registerCommand('ollama-copilot.collapseCloudModels', () =>
+      commands.executeCommand('workbench.actions.treeView.ollama-cloud-models.collapseAll'),
+    ),
+    commands.registerCommand('ollama-copilot.collapseLibrary', () =>
+      commands.executeCommand('workbench.actions.treeView.ollama-library-models.collapseAll'),
+    ),
+    commands.registerCommand('ollama-copilot.filterLocalModels', async () => {
+      const value = await window.showInputBox({ prompt: 'Filter local models', value: localProvider.filterText });
+      if (value !== undefined) {
+        localProvider.filterText = value;
+        void commands.executeCommand('setContext', 'ollama.localFilterActive', value.length > 0);
+        localProvider.refresh();
+      }
+    }),
+    commands.registerCommand('ollama-copilot.clearLocalFilter', () => {
+      localProvider.filterText = '';
+      void commands.executeCommand('setContext', 'ollama.localFilterActive', false);
+      localProvider.refresh();
+    }),
+    commands.registerCommand('ollama-copilot.filterCloudModels', async () => {
+      const value = await window.showInputBox({ prompt: 'Filter cloud models', value: cloudProvider.filterText });
+      if (value !== undefined) {
+        cloudProvider.filterText = value;
+        void commands.executeCommand('setContext', 'ollama.cloudFilterActive', value.length > 0);
+        cloudProvider.refresh();
+      }
+    }),
+    commands.registerCommand('ollama-copilot.clearCloudFilter', () => {
+      cloudProvider.filterText = '';
+      void commands.executeCommand('setContext', 'ollama.cloudFilterActive', false);
+      cloudProvider.refresh();
+    }),
+    commands.registerCommand('ollama-copilot.filterLibraryModels', async () => {
+      const value = await window.showInputBox({ prompt: 'Filter library models', value: libraryProvider.filterText });
+      if (value !== undefined) {
+        libraryProvider.filterText = value;
+        void commands.executeCommand('setContext', 'ollama.libraryFilterActive', value.length > 0);
+        libraryProvider.refresh();
+      }
+    }),
+    commands.registerCommand('ollama-copilot.clearLibraryFilter', () => {
+      libraryProvider.filterText = '';
+      void commands.executeCommand('setContext', 'ollama.libraryFilterActive', false);
+      libraryProvider.refresh();
+    }),
+    (() => {
+      const initialLocalGrouped = context.globalState.get<boolean>('ollama.localGrouped', true);
+      localProvider.grouped = initialLocalGrouped;
+      void commands.executeCommand('setContext', 'ollama.localGrouped', initialLocalGrouped);
+      return commands.registerCommand('ollama-copilot.toggleLocalGrouping', () => {
+        localProvider.grouped = !localProvider.grouped;
+        void context.globalState.update('ollama.localGrouped', localProvider.grouped);
+        void commands.executeCommand('setContext', 'ollama.localGrouped', localProvider.grouped);
+        localProvider.refresh();
+      });
+    })(),
+    (() => {
+      const initialCloudGrouped = context.globalState.get<boolean>('ollama.cloudGrouped', true);
+      cloudProvider.grouped = initialCloudGrouped;
+      void commands.executeCommand('setContext', 'ollama.cloudGrouped', initialCloudGrouped);
+      return commands.registerCommand('ollama-copilot.toggleCloudGrouping', () => {
+        cloudProvider.grouped = !cloudProvider.grouped;
+        void context.globalState.update('ollama.cloudGrouped', cloudProvider.grouped);
+        void commands.executeCommand('setContext', 'ollama.cloudGrouped', cloudProvider.grouped);
+        cloudProvider.refresh();
+      });
+    })(),
+    (() => {
+      const initialLibraryGrouped = context.globalState.get<boolean>('ollama.libraryGrouped', true);
+      libraryProvider.grouped = initialLibraryGrouped;
+      void commands.executeCommand('setContext', 'ollama.libraryGrouped', initialLibraryGrouped);
+      return commands.registerCommand('ollama-copilot.toggleLibraryGrouping', () => {
+        libraryProvider.grouped = !libraryProvider.grouped;
+        void context.globalState.update('ollama.libraryGrouped', libraryProvider.grouped);
+        void commands.executeCommand('setContext', 'ollama.libraryGrouped', libraryProvider.grouped);
+        libraryProvider.refresh();
+      });
+    })(),
     commands.registerCommand('ollama-copilot.refreshSidebar', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLocalModels', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLibrary', () => handleRefreshLibrary(libraryProvider)),

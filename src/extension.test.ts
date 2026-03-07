@@ -1266,6 +1266,80 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
     const allCalls = mockMarkdown.mock.calls.map((c: any[]) => c[0] as string);
     expect(allCalls.some((v: string) => v.includes('get_weather'))).toBe(true);
   });
+
+  it('shows error dialog and attempts model unload when model runner crashes', async () => {
+    vi.doMock('./client.js', () => ({ getOllamaClient: vi.fn(), testConnection: vi.fn() }));
+    vi.doMock('./diagnostics.js', () => ({
+      createDiagnosticsLogger: () => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        exception: vi.fn(),
+      }),
+      getConfiguredLogLevel: vi.fn(() => 'info'),
+    }));
+    vi.doMock('./provider.js', () => ({
+      OllamaChatModelProvider: class {
+        setAuthToken = vi.fn();
+      },
+      isThinkingModelId: () => false,
+    }));
+    vi.doMock('./sidebar.js', () => ({ registerSidebar: vi.fn() }));
+    vi.doMock('./modelfiles.js', () => ({ registerModelfileManager: vi.fn() }));
+
+    const showErrorMessage = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      LanguageModelChatMessageRole: { User: 1, Assistant: 2 },
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: string) => ({ role: 1, content }),
+        Assistant: (content: string) => ({ role: 2, content }),
+      },
+      lm: { selectChatModels: vi.fn().mockResolvedValue([]) },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+      Uri: {
+        file: vi.fn((path: string) => ({ fsPath: path })),
+        joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })),
+      },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+      window: { showErrorMessage },
+    }));
+
+    const ext = await import('./extension.js');
+
+    const mockMarkdown = vi.fn();
+    const stream = { markdown: mockMarkdown };
+    const token = { isCancellationRequested: false };
+
+    const mockChatFn = vi
+      .fn()
+      .mockRejectedValue(new Error('model runner has unexpectedly stopped, please check ollama server logs'));
+    const mockGenerateFn = vi.fn().mockResolvedValue({});
+    const mockClient = {
+      chat: mockChatFn,
+      generate: mockGenerateFn,
+    };
+
+    const request = {
+      prompt: 'hello',
+      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+    };
+
+    await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
+
+    expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('model runner crashed'), 'Open Logs');
+    // Best-effort unload via generate with keep_alive=0.
+    expect(mockGenerateFn).toHaveBeenCalledWith(expect.objectContaining({ model: 'llama3.2:latest', keep_alive: 0 }));
+    // Error text streamed back to the participant response.
+    expect(mockMarkdown).toHaveBeenCalledWith(expect.stringContaining('model runner has unexpectedly stopped'));
+  });
 });
 
 describe('handleConnectionTestFailure', () => {
