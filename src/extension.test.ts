@@ -1464,7 +1464,6 @@ describe('handleChatRequest model selection', () => {
     expect(mockMarkdown).toHaveBeenCalledWith('response from chosen model');
     expect(mockSelectChatModels).not.toHaveBeenCalled();
   });
-<<<<<<< HEAD
 
   it('invokes tools and feeds results back when toolInvocationToken is present', async () => {
     vi.resetModules();
