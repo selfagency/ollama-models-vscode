@@ -1129,23 +1129,34 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      // First, fetch running status from cloud API
-      const statusResponse = await fetch('https://ollama.com/api/tags', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: 'application/json',
-        },
-        signal: controller.signal,
-      });
+      // Fetch running status and cloud catalog concurrently to minimize latency
+      const [statusResponse, libraryResponse] = await Promise.all([
+        fetch('https://ollama.com/api/tags', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+          },
+          signal: controller.signal,
+        }),
+        fetch('https://ollama.com/search?c=cloud', {
+          method: 'GET',
+          signal: controller.signal,
+        }),
+      ]);
 
       if (!statusResponse.ok) {
         throw new Error(`HTTP ${statusResponse.status} from cloud models endpoint`);
       }
 
-      const statusJson = (await statusResponse.json()) as {
-        models?: Array<{ name: string; size?: number; expires_at?: string }>;
-      };
+      if (!libraryResponse.ok) {
+        throw new Error(`HTTP ${libraryResponse.status} from library`);
+      }
+
+      const [statusJson, html] = await Promise.all([
+        statusResponse.json() as Promise<{ models?: Array<{ name: string; size?: number; expires_at?: string }> }>,
+        libraryResponse.text(),
+      ]);
 
       // Build map of running models (API returns base names)
       const runningModels = new Map<string, { durationMs?: number; size?: number }>();
@@ -1156,18 +1167,6 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           : undefined;
         runningModels.set(baseName, { durationMs, size: model.size });
       }
-
-      // Fetch cloud catalog page (reliable list of cloud families)
-      const libraryResponse = await fetch('https://ollama.com/search?c=cloud', {
-        method: 'GET',
-        signal: controller.signal,
-      });
-
-      if (!libraryResponse.ok) {
-        throw new Error(`HTTP ${libraryResponse.status} from library`);
-      }
-
-      const html = await libraryResponse.text();
 
       // Parse cloud model families from catalog links.
       const cloudMatches = [...html.matchAll(/href="\/library\/([^"?#:]+)"/gi)];
