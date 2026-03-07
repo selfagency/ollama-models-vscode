@@ -145,18 +145,6 @@
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.sortLibraryByName",
-        "title": "Sort Ollama Library by name",
-        "icon": "$(sort-precedence)",
-        "category": "Ollama"
-      },
-      {
-        "command": "ollama-copilot.sortLibraryByRecency",
-        "title": "Sort Ollama Library by recency",
-        "icon": "$(sort-precedence)",
-        "category": "Ollama"
-      },
-      {
         "command": "ollama-copilot.deleteModel",
         "title": "Delete Ollama Model",
         "icon": "$(trash)",
@@ -277,16 +265,6 @@
           "group": "navigation"
         },
         {
-          "command": "ollama-copilot.sortLibraryByRecency",
-          "when": "view == ollama-library-models && ollama.librarySortMode == name",
-          "group": "navigation@2"
-        },
-        {
-          "command": "ollama-copilot.sortLibraryByName",
-          "when": "view == ollama-library-models && ollama.librarySortMode == recency",
-          "group": "navigation@2"
-        },
-        {
           "command": "ollama-copilot.refreshCloudModels",
           "when": "view == ollama-cloud-models",
           "group": "navigation"
@@ -346,11 +324,6 @@
         {
           "command": "ollama-copilot.openLibraryModelPage",
           "when": "view == ollama-library-models && viewItem == library-model",
-          "group": "inline@1"
-        },
-        {
-          "command": "ollama-copilot.openLibraryModelPage",
-          "when": "view == ollama-library-models && viewItem == cloud-library-model",
           "group": "inline@1"
         },
         {
@@ -417,15 +390,6 @@
           "type": "number",
           "default": 21600,
           "description": "Auto-refresh library and cloud model catalogs interval in seconds (default 6 hours)"
-        },
-        "ollama.librarySortMode": {
-          "type": "string",
-          "default": "name",
-          "enum": [
-            "name",
-            "recency"
-          ],
-          "description": "Sort mode for library models: Alphabetical by name or by recency"
         },
         "ollama.streamLogs": {
           "type": "boolean",

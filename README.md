@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Run Ollama models locally within GitHub Copilot Chat</strong>
+  <strong>Run Ollama models locally and in the cloud within GitHub Copilot Chat</strong>
 </p>
 
 <p align="center">
@@ -18,16 +18,15 @@
 
 ## ✨ Features
 
-- 🧠 **All Ollama Models** - Download and run any model from the [Ollama Library](https://ollama.ai/library), including Cloud models (Requires API key)
-- 🛠️ **Model Management** - Pull, manage, and delete models directly from the sidebar
-- 🏠 **Local Execution** - Models run on your machine with full privacy—no data leaves your computer
-- 🤖 **Code Completions** - Use local models to provide code completions in the editor
-- 🔧 **Tool Calling** - Function calling support for agentic workflows with compatible models
-- 🖼️ **Vision Support** - Image input for models with vision capabilities
-- ⚡ **Streaming** - Real-time response streaming for faster interactions
-- 📝 **Modelfile Management** - Create, edit, and build custom Ollama modelfiles with syntax highlighting, hover docs, and autocomplete
+- 🧠 **All Models** - Use any model from the [Ollama Library](https://ollama.ai/library), including Cloud models (requires API key), within the Copilot chat interface
+- 🛠️ **Model Management** - Pull, run, inspect, stop, and delete models from a custom Ollama sidebar
 - 💬 **Chat Participant** - Invoke `@ollama` directly in Copilot Chat for a dedicated, history-aware conversation with your local model
-
+- 📝 **Modelfile Management** - Create, edit, and build custom Ollama modelfiles with syntax highlighting, hover docs, and autocomplete
+- 🤖 **Code Completions** - Use local models to provide inline code completions
+- 🔧 **Tool Calling** - Tool support for agentic workflows with compatible models (access IDE functions, MCP servers, custom skills, etc.)
+- 🖼️ **Vision Support** - Image input for models with vision capabilities
+- 🏠 **Local Execution** - Local models run on your machine with full privacy—no data leaves your computer
+- ⚡ **Streaming** - Real-time response streaming for faster interactions
 ## 🔧 Requirements
 
 - **VS Code** 1.109.0 or higher
