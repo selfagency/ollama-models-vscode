@@ -292,13 +292,31 @@ export async function handleChatRequest(
 
     try {
       // Convert VS Code messages to the plain Ollama format expected by the client.
-      const ollamaMessages: (Message & { tool_call_id?: string })[] = messages.map(msg => ({
-        role: (msg.role === vscode.LanguageModelChatMessageRole.User ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: (Array.isArray(msg.content) ? msg.content : [])
+      const XML_CONTEXT_TAG_RE =
+        /<(environment_info|workspace_info|selection|file_context)[^>]*>[\s\S]*?<\/\1>/gi;
+      const systemContextParts: string[] = [];
+
+      const ollamaMessages: (Message & { tool_call_id?: string })[] = messages.map(msg => {
+        const isUser = msg.role === vscode.LanguageModelChatMessageRole.User;
+        let content = (Array.isArray(msg.content) ? msg.content : [])
           .filter((p): p is vscode.LanguageModelTextPart => p instanceof vscode.LanguageModelTextPart)
           .map(p => p.value)
-          .join(''),
-      }));
+          .join('');
+        if (isUser) {
+          content = content.replace(XML_CONTEXT_TAG_RE, (match) => {
+            systemContextParts.push(match.trim());
+            return '';
+          }).trim();
+        }
+        return {
+          role: (isUser ? 'user' : 'assistant') as 'user' | 'assistant',
+          content,
+        };
+      });
+
+      if (systemContextParts.length > 0) {
+        ollamaMessages.unshift({ role: 'system', content: systemContextParts.join('\n\n') });
+      }
 
       // Tool invocation loop — only when VS Code tools and an invocation token are available.
       const vscodeLmTools = vscode.lm.tools ?? [];

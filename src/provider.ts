@@ -563,6 +563,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     messages: readonly LanguageModelChatRequestMessage[],
   ): Parameters<typeof this.client.chat>[0]['messages'] {
     const ollamaMessages: Parameters<typeof this.client.chat>[0]['messages'] = [];
+    const XML_CONTEXT_TAG_RE =
+      /<(environment_info|workspace_info|selection|file_context)[^>]*>[\s\S]*?<\/\1>/gi;
+    const systemContextParts: string[] = [];
 
     for (const msg of messages) {
       const role = msg.role === LanguageModelChatMessageRole.User ? 'user' : 'assistant';
@@ -605,6 +608,13 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       }
 
       // Ollama requires content to be a string (images are separate field)
+      if (role === 'user') {
+        // Strip VS Code injected XML context blocks; accumulate for system message
+        textContent = textContent.replace(XML_CONTEXT_TAG_RE, (match) => {
+          systemContextParts.push(match.trim());
+          return '';
+        }).trim();
+      }
       if (textContent || images.length > 0) {
         ollamaMsg.content = textContent;
       }
@@ -615,6 +625,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       if (ollamaMsg.content || ollamaMsg.tool_calls) {
         ollamaMessages.push(ollamaMsg as never);
       }
+    }
+
+    if (systemContextParts.length > 0) {
+      ollamaMessages.unshift({ role: 'system', content: systemContextParts.join('\n\n') } as never);
     }
 
     return ollamaMessages;

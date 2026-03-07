@@ -1048,3 +1048,117 @@ describe('isThinkingModelId', () => {
     expect(isThinkingModelId('codellama:latest')).toBe(false);
   });
 });
+
+describe('XML context extraction in message conversion', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('extracts XML context blocks from user messages into a system message', async () => {
+    const chat = vi.fn().mockImplementation(async function* () {
+      yield { message: { content: 'response' } };
+    });
+
+    vi.mocked(getOllamaClient).mockResolvedValueOnce({ chat, abort: vi.fn() } as any);
+
+    const provider = new OllamaChatModelProvider(
+      { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
+      { list: vi.fn(), show: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+    );
+
+    const progress = { report: vi.fn() };
+    const token = { isCancellationRequested: false };
+    const model = {
+      id: 'test-model',
+      name: 'Test',
+      family: '🦙 Ollama',
+      version: '1.0.0',
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      capabilities: { imageInput: false, toolCalling: false },
+    };
+
+    const userText = '<environment_info>\nOS: macOS\n</environment_info>\nWhat is 2+2?';
+    const message = {
+      role: LanguageModelChatMessageRole.User,
+      name: undefined,
+      content: [new LanguageModelTextPart(userText)],
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      model,
+      [message as any],
+      { tools: [], toolMode: 'auto' } as any,
+      progress as any,
+      token as any,
+    );
+
+    const messages = chat.mock.calls[0]?.[0]?.messages;
+
+    expect(messages?.[0]?.role).toBe('system');
+    expect(messages?.[0]?.content).toContain('OS: macOS');
+
+    expect(messages?.[1]?.role).toBe('user');
+    expect(messages?.[1]?.content).not.toContain('<environment_info>');
+    expect(messages?.[1]?.content).toContain('What is 2+2?');
+  });
+
+  it('strips all four known context tag types', async () => {
+    const chat = vi.fn().mockImplementation(async function* () {
+      yield { message: { content: 'ok' } };
+    });
+
+    vi.mocked(getOllamaClient).mockResolvedValueOnce({ chat, abort: vi.fn() } as any);
+
+    const provider = new OllamaChatModelProvider(
+      { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
+      { list: vi.fn(), show: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+    );
+
+    const userText = [
+      '<environment_info>\nenv data\n</environment_info>',
+      '<workspace_info>\nws data\n</workspace_info>',
+      '<selection>\nsel data\n</selection>',
+      '<file_context>\nfile data\n</file_context>',
+      'User question',
+    ].join('\n');
+
+    const message = {
+      role: LanguageModelChatMessageRole.User,
+      name: undefined,
+      content: [new LanguageModelTextPart(userText)],
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test',
+        family: '🦙 Ollama',
+        version: '1.0.0',
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        capabilities: { imageInput: false, toolCalling: false },
+      },
+      [message as any],
+      { tools: [], toolMode: 'auto' } as any,
+      { report: vi.fn() } as any,
+      { isCancellationRequested: false } as any,
+    );
+
+    const messages = chat.mock.calls[0]?.[0]?.messages;
+
+    expect(messages?.[0]?.role).toBe('system');
+    expect(messages?.[0]?.content).toContain('env data');
+    expect(messages?.[0]?.content).toContain('ws data');
+    expect(messages?.[0]?.content).toContain('sel data');
+    expect(messages?.[0]?.content).toContain('file data');
+
+    expect(messages?.[1]?.content).not.toContain('<environment_info>');
+    expect(messages?.[1]?.content).not.toContain('<workspace_info>');
+    expect(messages?.[1]?.content).not.toContain('<selection>');
+    expect(messages?.[1]?.content).not.toContain('<file_context>');
+    expect(messages?.[1]?.content).toContain('User question');
+  });
+});
