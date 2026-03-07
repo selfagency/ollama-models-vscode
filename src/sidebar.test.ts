@@ -841,6 +841,45 @@ describe('LocalModelsProvider', () => {
 });
 
 describe('Extracted command handlers', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        description?: string;
+        contextValue?: string;
+        collapsibleState?: number;
+        tooltip?: string;
+        command?: unknown;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        showWarningMessage: vi.fn().mockResolvedValue('Delete'),
+        showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+      },
+      env: {
+        openExternal: vi.fn(),
+      },
+      Uri: {
+        parse: vi.fn((value: string) => ({ value })),
+      },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      ProgressLocation: { Notification: 15 },
+    }));
+  });
+
   it('handleRefreshLocalModels refreshes provider and shows message', async () => {
     const { handleRefreshLocalModels } = await import('./sidebar.js');
 
@@ -1143,6 +1182,8 @@ describe('Extracted command handlers', () => {
 
     expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('new-cloud-model');
     expect(mockStartModel).toHaveBeenCalledWith('new-cloud-model:cloud');
+    expect(mockCloudProvider.markModelWarm).toHaveBeenCalledWith('new-cloud-model', 'new-cloud-model:cloud');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleStopCloudModel stops cloud-running models', async () => {

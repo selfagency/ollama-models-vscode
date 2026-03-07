@@ -109,12 +109,18 @@ export const window = {
   showInformationMessage: vi.fn(),
   showErrorMessage: vi.fn(),
   createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+  showTextDocument: vi.fn(),
 };
 
 export const lm = {
   registerLanguageModelChatProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
   selectChatModels: vi.fn().mockResolvedValue([]),
   onDidChangeChatModels: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+};
+
+export const workspace = {
+  openTextDocument: vi.fn().mockResolvedValue({}),
+  getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }),
 };
 
 export const commands = {

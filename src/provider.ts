@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { Ollama, type ChatResponse, type ShowResponse } from 'ollama';
 import {
   CancellationToken,
@@ -14,7 +16,9 @@ import {
   LanguageModelToolResultPart,
   Progress,
   ProvideLanguageModelChatResponseOptions,
+  Uri,
   window,
+  workspace,
 } from 'vscode';
 import { getCloudOllamaClient, getContextLengthOverride, getOllamaClient } from './client';
 import type { DiagnosticsLogger } from './diagnostics.js';
@@ -533,17 +537,25 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     } catch (error) {
       this.outputChannel.exception('[Ollama] Chat response failed', error);
 
-      const isCrashError =
-        error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
+      const isCrashError = error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
       if (isCrashError) {
         // Best-effort unload so Ollama housekeeps the dead runner — ignore any failure
-        perRequestClient
-          .generate({ model: runtimeModelId, prompt: '', keep_alive: 0, stream: false })
-          .catch(() => {});
-        void window.showErrorMessage(
+        perRequestClient.generate({ model: runtimeModelId, prompt: '', keep_alive: 0, stream: false }).catch(() => {});
+        const selection = await window.showErrorMessage(
           'The Ollama model runner crashed. Please check the Ollama server logs and restart if needed.',
           'Open Logs',
         );
+        if (selection === 'Open Logs') {
+          const logsPath = join(homedir(), '.ollama', 'logs', 'server.log');
+          try {
+            const document = await workspace.openTextDocument(Uri.file(logsPath));
+            await window.showTextDocument(document, { preview: false });
+          } catch {
+            void window.showWarningMessage(
+              `Could not open Ollama logs at ${logsPath}. Please check that the Ollama server is installed and logging is enabled.`,
+            );
+          }
+        }
       }
 
       const isConnectionError = error instanceof TypeError && error.message.includes('fetch failed');
