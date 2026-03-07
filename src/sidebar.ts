@@ -502,7 +502,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       this.logChannel?.debug(`[Ollama] Starting local model: ${modelName}`);
       await window.withProgress({ location: 15, title: `Starting ${modelName}...` }, async () => {
         const isCloudModel = this.isCloudTaggedModel(modelName);
-        const activeClient = (isCloudModel && this.context) ? await getCloudOllamaClient(this.context) : this.client;
+        const activeClient = isCloudModel && this.context ? await getCloudOllamaClient(this.context) : this.client;
         if (isCloudModel) {
           // Cloud models should be pulled first (same behavior as `ollama run`).
           this.logChannel?.info(`[Ollama] Pulling cloud model before start: ${modelName}`);
@@ -1307,14 +1307,10 @@ export function handleOpenCloudModel(item: ModelTreeItem): void {
  */
 export async function handleDeleteModel(item: ModelTreeItem, localProvider: LocalModelsProvider): Promise<void> {
   if (item && (item.type === 'local-running' || item.type === 'cloud-running')) {
-    void window.showErrorMessage('Stop the model before deleting it.');
+    void window.showWarningMessage('Stop the model before deleting it.');
     return;
   }
-  if (
-    item &&
-    (item.type === 'local-stopped' ||
-      item.type === 'cloud-stopped')
-  ) {
+  if (item && (item.type === 'local-stopped' || item.type === 'cloud-stopped')) {
     const answer = await window.showWarningMessage(`Delete model "${item.label}"?`, 'Delete', 'Cancel');
     if (answer === 'Delete') {
       void localProvider.deleteModel(item.label);
