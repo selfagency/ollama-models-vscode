@@ -31,15 +31,18 @@ export async function getCloudOllamaClient(context: ExtensionContext): Promise<O
   const host = config.get<string>('host') || 'http://localhost:11434';
   const cloudApiKey = await context.secrets.get('ollama-cloud-api-key');
 
-  const clientConfig: { host: string; headers?: Record<string, string> } = {
-    host,
-  };
-
-  if (cloudApiKey) {
-    clientConfig.headers = {
-      Authorization: `Bearer ${cloudApiKey}`,
-    };
+  if (!cloudApiKey) {
+    throw new Error(
+      'Ollama Cloud API key not configured. Use the "Ollama: Manage Cloud API Key" command to set it up.',
+    );
   }
+
+  const clientConfig: { host: string; headers: Record<string, string> } = {
+    host,
+    headers: {
+      Authorization: `Bearer ${cloudApiKey}`,
+    },
+  };
 
   return new Ollama(clientConfig);
 }
