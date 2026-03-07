@@ -937,6 +937,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private refreshIntervals: NodeJS.Timeout[] = [];
   private cachedNames = new Set<string>();
   private warmedModelNames = new Set<string>();
+  private warmedModelResolvedNames = new Map<string, string>();
 
   constructor(
     private context: ExtensionContext,
@@ -997,13 +998,24 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     return new Set(this.cachedNames);
   }
 
-  markModelWarm(modelName: string): void {
-    this.warmedModelNames.add(modelName.split(':')[0]);
+  markModelWarm(modelName: string, resolvedName?: string): void {
+    const baseName = modelName.split(':')[0];
+    this.warmedModelNames.add(baseName);
+    if (resolvedName) {
+      this.warmedModelResolvedNames.set(baseName, resolvedName);
+    }
     this.treeChangeEmitter.fire(null);
   }
 
+  getWarmedModelName(baseName: string): string {
+    const base = baseName.split(':')[0];
+    return this.warmedModelResolvedNames.get(base) ?? `${base}:cloud`;
+  }
+
   markModelStopped(modelName: string): void {
-    this.warmedModelNames.delete(modelName.split(':')[0]);
+    const baseName = modelName.split(':')[0];
+    this.warmedModelNames.delete(baseName);
+    this.warmedModelResolvedNames.delete(baseName);
     this.treeChangeEmitter.fire(null);
   }
 
@@ -1445,7 +1457,7 @@ export async function handleStartCloudModel(
         ? item.label
         : `${item.label}:cloud`;
     await localProvider.startModel(resolvedModel);
-    cloudProvider?.markModelWarm(item.label);
+    cloudProvider?.markModelWarm(item.label, resolvedModel);
     cloudProvider?.refresh();
   }
 }
@@ -1459,7 +1471,8 @@ export async function handleStopCloudModel(
   cloudProvider?: CloudModelsProvider,
 ): Promise<void> {
   if (item && item.type === 'cloud-running') {
-    await localProvider.stopModel(item.label);
+    const resolvedName = cloudProvider?.getWarmedModelName(item.label) ?? item.label;
+    await localProvider.stopModel(resolvedName);
     cloudProvider?.markModelStopped(item.label);
     cloudProvider?.refresh();
   }

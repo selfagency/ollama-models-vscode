@@ -1047,6 +1047,8 @@ describe('Extracted command handlers', () => {
 
     expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('new-cloud-model');
     expect(mockStartModel).toHaveBeenCalledWith('new-cloud-model:cloud');
+    expect(mockCloudProvider.markModelWarm).toHaveBeenCalledWith('new-cloud-model', 'new-cloud-model:cloud');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleStopCloudModel stops cloud-running models', async () => {
@@ -1056,11 +1058,20 @@ describe('Extracted command handlers', () => {
       stopModel: vi.fn(),
     } as any;
 
+    const mockCloudProvider = {
+      getWarmedModelName: vi.fn().mockReturnValue('test-model:cloud'),
+      markModelStopped: vi.fn(),
+      refresh: vi.fn(),
+    } as any;
+
     const item = new ModelTreeItem('test-model', 'cloud-running');
 
-    await handleStopCloudModel(item, mockProvider);
+    await handleStopCloudModel(item, mockProvider, mockCloudProvider);
 
-    expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.getWarmedModelName).toHaveBeenCalledWith('test-model');
+    expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model:cloud');
+    expect(mockCloudProvider.markModelStopped).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleOpenLibraryModelPage handles library-model type', async () => {
