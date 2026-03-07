@@ -4,8 +4,13 @@ const path = require('path');
 
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../coverage/coverage-final.json'), 'utf8'));
 
+const srcRoot = path.join(__dirname, '../src');
+
 for (const [filePath, info] of Object.entries(data)) {
-  const shortPath = filePath.replace(path.join(__dirname, '../src') + '/', '');
+  const shortPath = path
+    .relative(srcRoot, filePath)
+    .split(path.sep)
+    .join('/');
   if (shortPath.includes('vscode.mock')) continue;
 
   const uncoveredLines = Object.entries(info.s)
