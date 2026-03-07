@@ -46,6 +46,7 @@
     "ollama": "^0.6.3"
   },
   "devDependencies": {
+    "@go-task/cli": "^3.49.0",
     "@octokit/rest": "^22.0.1",
     "@types/node": "^25.3.3",
     "@types/vscode": "^1.109.0",

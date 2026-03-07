@@ -1,2 +1,3 @@
 onlyBuiltDependencies:
+  - '@go-task/cli'
   - esbuild

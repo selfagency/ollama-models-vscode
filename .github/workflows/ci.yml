@@ -63,9 +63,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: Install task
-        run: curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash && sudo apt-get install task -y
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -84,10 +81,47 @@ jobs:
       - name: Compile
         run: task compile
 
-      - name: Run tests
+      - name: Run unit tests
         run: xvfb-run -a task unit-test-coverage -- --reporter=default --reporter=junit --outputFile=test-report.junit.xml
         env:
           CI: true
+
+      - name: Run extension tests
+        run: task extension-tests
+        env:
+          CI: true
+
+      - name: Setup Ollama
+        uses: ai-action/setup-ollama@v2
+
+      - name: Start Ollama server
+        run: ollama serve &
+        shell: bash
+
+      - name: Wait for Ollama server
+        run: |
+          sleep 5
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/version > /dev/null; then
+              echo "Ollama server is running"
+              exit 0
+            fi
+            echo "Waiting for Ollama server... ($i/30)"
+            sleep 2
+          done
+          echo "Ollama server failed to start"
+          exit 1
+        shell: bash
+
+      - name: Pull Ollama model
+        run: ollama pull tinyllama
+        shell: bash
+
+      - name: Run integration tests
+        run: task integration-tests
+        env:
+          CI: true
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
 
       - name: Upload test artifacts on failure
         if: failure()

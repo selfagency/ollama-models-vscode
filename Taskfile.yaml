@@ -27,6 +27,14 @@ tasks:
       - ./node_modules/.bin/oxfmt . --check
     silent: false
 
+  check-all:
+    desc: Run all checks
+    cmds:
+      - task: check-types
+      - task: lint
+      - task: check-formatting
+    silent: false
+
   compile:
     desc: Compile the extension
     env:
@@ -56,7 +64,7 @@ tasks:
   extension-tests:
     desc: Run extension tests
     cmds:
-      - ./node_modules/.bin/vscode-test test/extension {{.CLI_ARGS}}
+      - node test/extension/index.js {{.CLI_ARGS}}
     silent: false
 
   integration-tests:
@@ -98,9 +106,7 @@ tasks:
   test-build-release:
     desc: Test, Build & Release
     cmds:
-      - task: check-types
-      - task: lint
-      - task: check-formatting
+      - task: check-all
       - task: test-all
       - task: release
     silent: false
