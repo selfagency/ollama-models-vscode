@@ -151,7 +151,7 @@ export function setupChatParticipant(
   const chat = chatApi || vscode.chat;
 
   const participant = chat.createChatParticipant('ollama-copilot.ollama', participantHandler);
-  participant.iconPath = vscode.Uri.file(join(context.extensionUri.fsPath, 'logo.png'));
+  participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
   return participant;
 }
 
@@ -359,7 +359,12 @@ export async function handleChatRequest(
             } catch (invokeError) {
               resultText = invokeError instanceof Error ? invokeError.message : 'Tool execution failed';
             }
-            ollamaMessages.push({ role: 'tool', content: resultText, tool_name: toolName } as never);
+            ollamaMessages.push({
+              role: 'tool',
+              content: resultText,
+              tool_name: toolName,
+              tool_call_id: (toolCall as { id?: string }).id,
+            } as never);
           }
         }
         // MAX_TOOL_ROUNDS reached — fall through to the streaming pass below.
@@ -467,19 +472,27 @@ export async function handleChatRequest(
       );
 
       const pendingToolCalls: vscode.LanguageModelToolCallPart[] = [];
+      const assistantTextParts: vscode.LanguageModelTextPart[] = [];
       for await (const chunk of response.stream) {
         if (chunk instanceof vscode.LanguageModelTextPart) {
-          stream.markdown(chunk.value);
+          assistantTextParts.push(chunk);
         } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
           pendingToolCalls.push(chunk);
         }
       }
 
       if (pendingToolCalls.length === 0 || !request.toolInvocationToken) {
+        // No more tool calls — stream any buffered text and finish.
+        for (const part of assistantTextParts) {
+          stream.markdown(part.value);
+        }
         break;
       }
 
-      conversationMessages.push(vscode.LanguageModelChatMessage.Assistant(pendingToolCalls));
+      // Append the full assistant turn (text + tool calls) so subsequent rounds have context.
+      conversationMessages.push(
+        vscode.LanguageModelChatMessage.Assistant([...assistantTextParts, ...pendingToolCalls]),
+      );
 
       const toolResults: vscode.LanguageModelToolResultPart[] = [];
       for (const toolCall of pendingToolCalls) {

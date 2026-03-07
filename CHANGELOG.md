@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LanguageModelChatProvider` registration under vendor `selfagency-ollama`, making local Ollama models available in GitHub Copilot Chat and the VS Code model picker
 - `@ollama` chat participant (`ollama-copilot.ollama`) with history-aware direct streaming to the Ollama API
 - Tool calling support for compatible models (e.g. `qwen2.5`, `llama3.1`) via the VS Code LM tool API; all models advertise `toolCalling: true` for picker visibility
+- Full agentic tool-invocation loop in `@ollama` participant (up to 10 rounds)
 - Vision / multimodal image input support
 - Thinking model support — automatically retries with `think: false` when the model does not support extended thinking
 - Model management sidebar with three panels: **Local Models**, **Library Models**, and **Cloud Models** (requires API key)
@@ -30,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `participant.iconPath` now uses `vscode.Uri.joinPath` so the icon resolves correctly in remote and web extension hosts
+- Tool result messages in the direct Ollama agentic loop now include `tool_call_id` so Ollama can correlate results with the originating call
+- VS Code LM API fallback agentic loop now buffers assistant text alongside tool-call parts and appends the full assistant turn to the conversation, ensuring subsequent rounds have complete context
 - Non-tool-calling models now appear in the VS Code model picker (resolved by advertising `toolCalling: true` unconditionally; native support tracked separately)
 - LM response streamed per-token rather than buffered to a single chunk
 - Cloud model run flow: pull model before start; model name suffixes applied correctly
