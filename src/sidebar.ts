@@ -303,10 +303,11 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       // Apply filter: keep only families where the family name or any child matches
       const filterLower = this.filterText.toLowerCase();
       const filteredEntries = Array.from(groups.entries())
-        .filter(([familyName, familyModels]) =>
-          !filterLower ||
-          familyName.toLowerCase().includes(filterLower) ||
-          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+        .filter(
+          ([familyName, familyModels]) =>
+            !filterLower ||
+            familyName.toLowerCase().includes(filterLower) ||
+            familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
         )
         .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -724,10 +725,11 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
     // Apply filter: keep only families where the family name or any child matches
     const filterLower = this.filterText.toLowerCase();
     const filteredEntries = Array.from(groups.entries())
-      .filter(([familyName, familyModels]) =>
-        !filterLower ||
-        familyName.toLowerCase().includes(filterLower) ||
-        familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+      .filter(
+        ([familyName, familyModels]) =>
+          !filterLower ||
+          familyName.toLowerCase().includes(filterLower) ||
+          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
       )
       .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -1027,10 +1029,11 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       // Apply filter: keep only families where the family name or any child matches
       const filterLower = this.filterText.toLowerCase();
       const filteredEntries = Array.from(groups.entries())
-        .filter(([familyName, familyModels]) =>
-          !filterLower ||
-          familyName.toLowerCase().includes(filterLower) ||
-          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+        .filter(
+          ([familyName, familyModels]) =>
+            !filterLower ||
+            familyName.toLowerCase().includes(filterLower) ||
+            familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
         )
         .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -1375,11 +1378,7 @@ export async function handleDeleteModel(item: ModelTreeItem, localProvider: Loca
     void window.showErrorMessage('Stop the model before deleting it.');
     return;
   }
-  if (
-    item &&
-    (item.type === 'local-stopped' ||
-      item.type === 'cloud-stopped')
-  ) {
+  if (item && (item.type === 'local-stopped' || item.type === 'cloud-stopped')) {
     const answer = await window.showWarningMessage(`Delete model "${item.label}"?`, 'Delete', 'Cancel');
     if (answer === 'Delete') {
       void localProvider.deleteModel(item.label);

@@ -39,7 +39,8 @@
     "prepare": "husky",
     "test": "task unit-tests",
     "test:coverage": "task unit-test-coverage",
-    "test:extension": "task extension-tests"
+    "test:extension": "task extension-tests",
+    "test:integration": "task integration-tests"
   },
   "dependencies": {
     "ollama": "^0.6.3"
@@ -68,51 +69,25 @@
   },
   "lint-staged": {
     "scripts/*.mjs": [
-      "oxlint --fix",
-      "oxfmt --write"
+      "task precommit -- "
     ],
     "src/**/*.ts": [
-      "oxlint --fix",
-      "oxfmt --write"
+      "task precommit -- "
     ],
     "**/*.{json,yml,yaml,md}": [
       "oxfmt --write"
     ]
   },
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "ollama-explorer",
-          "title": "Ollama",
-          "icon": "ollama.svg"
-        }
-      ]
-    },
-    "views": {
-      "ollama-explorer": [
-        {
-          "icon": "$(server)",
-          "id": "ollama-local-models",
-          "name": "Local Models"
-        },
-        {
-          "icon": "$(globe)",
-          "id": "ollama-cloud-models",
-          "name": "Cloud Models"
-        },
-        {
-          "icon": "$(cloud)",
-          "id": "ollama-library-models",
-          "name": "Library"
-        },
-        {
-          "icon": "$(file-code)",
-          "id": "ollama-modelfiles",
-          "name": "Modelfiles"
-        }
-      ]
-    },
+    "chatParticipants": [
+      {
+        "id": "ollama-copilot.ollama",
+        "name": "ollama",
+        "fullName": "Ollama",
+        "description": "Chat with an Ollama model",
+        "isSticky": true
+      }
+    ],
     "commands": [
       {
         "command": "ollama-copilot.manageAuthToken",
@@ -313,6 +288,91 @@
         "category": "Ollama"
       }
     ],
+    "configuration": {
+      "title": "Ollama",
+      "properties": {
+        "ollama.host": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL (local or remote)"
+        },
+        "ollama.contextLength": {
+          "type": "number",
+          "default": 0,
+          "description": "Override context window size (0 = use model default)"
+        },
+        "ollama.localModelRefreshInterval": {
+          "type": "number",
+          "default": 30,
+          "description": "Auto-refresh local and running models interval in seconds"
+        },
+        "ollama.libraryRefreshInterval": {
+          "type": "number",
+          "default": 21600,
+          "description": "Auto-refresh library and cloud model catalogs interval in seconds (default 6 hours)"
+        },
+        "ollama.streamLogs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stream Ollama server logs to output channel"
+        },
+        "ollama.diagnostics.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "description": "Controls Ollama extension diagnostics verbosity in the output channel"
+        },
+        "ollama.modelfilesPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to folder containing Modelfiles. Leave empty to use ~/.ollama/modelfiles"
+        },
+        "ollama.completionModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model used for inline code completions. Leave empty to disable. Smaller, faster models work best (e.g. `qwen2.5-coder:1.5b`, `deepseek-coder:1.3b`)."
+        },
+        "ollama.enableInlineCompletions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Ollama inline code completions."
+        }
+      }
+    },
+    "grammars": [
+      {
+        "language": "modelfile",
+        "scopeName": "source.modelfile",
+        "path": "./syntaxes/modelfile.tmLanguage.json"
+      }
+    ],
+    "languageModelChatProviders": [
+      {
+        "vendor": "selfagency-ollama",
+        "displayName": "🦙 Ollama",
+        "managementCommand": "ollama-copilot.manageAuthToken"
+      }
+    ],
+    "languages": [
+      {
+        "id": "modelfile",
+        "aliases": [
+          "Modelfile"
+        ],
+        "extensions": [
+          ".modelfile"
+        ],
+        "filenames": [
+          "Modelfile"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "menus": {
       "view/title": [
         {
@@ -484,100 +544,39 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Ollama",
-      "properties": {
-        "ollama.host": {
-          "type": "string",
-          "default": "http://localhost:11434",
-          "description": "Ollama server URL (local or remote)"
+    "views": {
+      "ollama-explorer": [
+        {
+          "icon": "$(server)",
+          "id": "ollama-local-models",
+          "name": "Local Models"
         },
-        "ollama.contextLength": {
-          "type": "number",
-          "default": 0,
-          "description": "Override context window size (0 = use model default)"
+        {
+          "icon": "$(globe)",
+          "id": "ollama-cloud-models",
+          "name": "Cloud Models"
         },
-        "ollama.localModelRefreshInterval": {
-          "type": "number",
-          "default": 30,
-          "description": "Auto-refresh local and running models interval in seconds"
+        {
+          "icon": "$(cloud)",
+          "id": "ollama-library-models",
+          "name": "Library"
         },
-        "ollama.libraryRefreshInterval": {
-          "type": "number",
-          "default": 21600,
-          "description": "Auto-refresh library and cloud model catalogs interval in seconds (default 6 hours)"
-        },
-        "ollama.streamLogs": {
-          "type": "boolean",
-          "default": true,
-          "description": "Stream Ollama server logs to output channel"
-        },
-        "ollama.diagnostics.logLevel": {
-          "type": "string",
-          "default": "info",
-          "enum": [
-            "debug",
-            "info",
-            "warn",
-            "error"
-          ],
-          "description": "Controls Ollama extension diagnostics verbosity in the output channel"
-        },
-        "ollama.modelfilesPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to folder containing Modelfiles. Leave empty to use ~/.ollama/modelfiles"
-        },
-        "ollama.completionModel": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Model used for inline code completions. Leave empty to disable. Smaller, faster models work best (e.g. `qwen2.5-coder:1.5b`, `deepseek-coder:1.3b`)."
-        },
-        "ollama.enableInlineCompletions": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable Ollama inline code completions."
+        {
+          "icon": "$(file-code)",
+          "id": "ollama-modelfiles",
+          "name": "Modelfiles"
         }
-      }
+      ]
     },
-    "languages": [
-      {
-        "id": "modelfile",
-        "aliases": [
-          "Modelfile"
-        ],
-        "extensions": [
-          ".modelfile"
-        ],
-        "filenames": [
-          "Modelfile"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ],
-    "grammars": [
-      {
-        "language": "modelfile",
-        "scopeName": "source.modelfile",
-        "path": "./syntaxes/modelfile.tmLanguage.json"
-      }
-    ],
-    "languageModelChatProviders": [
-      {
-        "vendor": "selfagency-ollama",
-        "displayName": "🦙 Ollama",
-        "managementCommand": "ollama-copilot.manageAuthToken"
-      }
-    ],
-    "chatParticipants": [
-      {
-        "id": "ollama-copilot.ollama",
-        "name": "ollama",
-        "fullName": "Ollama",
-        "description": "Chat with an Ollama model",
-        "isSticky": true
-      }
-    ]
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ollama-explorer",
+          "title": "Ollama",
+          "icon": "ollama.svg"
+        }
+      ]
+    }
   },
   "activationEvents": [
     "onChatParticipant:ollama-copilot.ollama",

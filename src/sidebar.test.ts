@@ -702,7 +702,8 @@ describe('LocalModelsProvider', () => {
 
     const downloaded = children.find((c: any) => c.label === 'llama3.2:1b');
     expect(downloaded?.contextValue).toBe('library-model-downloaded-variant');
-    expect((downloaded?.iconPath as { id: string }).id).toBe('check');
+    expect(downloaded).toBeDefined();
+    expect((downloaded!.iconPath as { id: string }).id).toBe('check');
     libraryProvider.dispose();
   });
 
@@ -1457,6 +1458,7 @@ describe('Extracted command handlers', () => {
 
     // Stream that throws to simulate an aborted connection
     async function* abortedStream() {
+      yield { status: '' };
       throw new Error('Request aborted');
     }
 
@@ -1763,11 +1765,16 @@ describe('Extracted command handlers', () => {
     vi.doMock('vscode', () => ({
       TreeItem: class {
         label: string;
-        constructor(label: string) { this.label = label; }
+        constructor(label: string) {
+          this.label = label;
+        }
       },
       ThemeIcon: class {},
       TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       window: {
         createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
         withProgress: vi.fn(),
@@ -1832,10 +1839,18 @@ describe('Extracted command handlers', () => {
   it('registerSidebar registers filter and clear-filter commands for all three views', async () => {
     vi.resetModules();
     vi.doMock('vscode', () => ({
-      TreeItem: class { label: string; constructor(label: string) { this.label = label; } },
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
       ThemeIcon: class {},
       TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       window: {
         createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
         withProgress: vi.fn(),
@@ -1869,7 +1884,8 @@ describe('Extracted command handlers', () => {
 
     registerSidebar(mockContext, mockClient);
 
-    const registeredIds = vi.mocked(vscode.commands.registerCommand).mock.calls.map(([id]) => id);
+    const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
+    const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
     expect(registeredIds).toContain('ollama-copilot.filterLocalModels');
     expect(registeredIds).toContain('ollama-copilot.clearLocalFilter');
     expect(registeredIds).toContain('ollama-copilot.filterCloudModels');
@@ -1893,11 +1909,18 @@ describe('LocalModelsProvider filter', () => {
         collapsibleState?: number;
         iconPath?: unknown;
         tooltip?: string;
-        constructor(label: string) { this.label = label; }
+        constructor(label: string) {
+          this.label = label;
+        }
       },
-      ThemeIcon: class { constructor(public id: string) {} },
+      ThemeIcon: class {
+        constructor(public id: string) {}
+      },
       TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       window: {
         registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
         showInputBox: vi.fn(),
@@ -1930,7 +1953,9 @@ describe('LocalModelsProvider filter', () => {
     };
   });
 
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('returns all family groups when filterText is empty', async () => {
     const provider = new LocalModelsProvider(mockClient);
@@ -1973,11 +1998,18 @@ describe('LocalModelsProvider grouped/flat toggle', () => {
         collapsibleState?: number;
         iconPath?: unknown;
         tooltip?: string;
-        constructor(label: string) { this.label = label; }
+        constructor(label: string) {
+          this.label = label;
+        }
       },
-      ThemeIcon: class { constructor(public id: string) {} },
+      ThemeIcon: class {
+        constructor(public id: string) {}
+      },
       TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       window: {
         registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
         showInputBox: vi.fn(),
@@ -2010,7 +2042,9 @@ describe('LocalModelsProvider grouped/flat toggle', () => {
     };
   });
 
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('defaults to grouped mode returning family groups', async () => {
     const provider = new LocalModelsProvider(mockClient);
@@ -2040,10 +2074,18 @@ describe('registerSidebar grouped/flat toggle commands', () => {
   it('registers toggleLocalGrouping, toggleCloudGrouping, toggleLibraryGrouping commands', async () => {
     vi.resetModules();
     vi.doMock('vscode', () => ({
-      TreeItem: class { label: string; constructor(label: string) { this.label = label; } },
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
       ThemeIcon: class {},
       TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-      EventEmitter: class { event = {}; fire = vi.fn(); },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
       window: {
         createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
         withProgress: vi.fn(),
@@ -2077,7 +2119,8 @@ describe('registerSidebar grouped/flat toggle commands', () => {
 
     registerSidebar(mockContext, mockClient);
 
-    const registeredIds = vi.mocked(vscode.commands.registerCommand).mock.calls.map(([id]) => id);
+    const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
+    const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
     expect(registeredIds).toContain('ollama-copilot.toggleLocalGrouping');
     expect(registeredIds).toContain('ollama-copilot.toggleCloudGrouping');
     expect(registeredIds).toContain('ollama-copilot.toggleLibraryGrouping');

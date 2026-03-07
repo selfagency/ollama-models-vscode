@@ -36,9 +36,7 @@ beforeAll(async () => {
   try {
     await client.list();
   } catch {
-    throw new Error(
-      `Cannot reach Ollama at ${OLLAMA_HOST}. Start the server before running integration tests.`,
-    );
+    throw new Error(`Cannot reach Ollama at ${OLLAMA_HOST}. Start the server before running integration tests.`);
   }
 
   // Detect a cloud model automatically so tests can run without manual config.
@@ -68,6 +66,82 @@ describe('Ollama server connection', () => {
     expect(info.details).toBeDefined();
     expect(info.details.family).toBeTruthy();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Local model — start / stop
+// ---------------------------------------------------------------------------
+
+describe('Local model start and stop', () => {
+  it('starts a local model and verifies it is running', async () => {
+    // Start the model using the same pattern as sidebar.ts startModel()
+    await client.generate({
+      model: LOCAL_MODEL,
+      prompt: '',
+      stream: false,
+      keep_alive: '10m',
+    });
+
+    // Verify the model appears in `ps`
+    const ps = await client.ps();
+    const running = ps.models.find(m => m.name.includes(LOCAL_MODEL.split(':')[0]));
+    expect(running).toBeDefined();
+    expect(running!.name).toContain(LOCAL_MODEL.split(':')[0]);
+  }, 120_000);
+
+  it('stops a local model and verifies it is no longer running', async () => {
+    // Ensure the model is running first
+    await client.generate({
+      model: LOCAL_MODEL,
+      prompt: '',
+      stream: false,
+      keep_alive: '10m',
+    });
+
+    // Stop the model using keep_alive: 0 (same pattern as sidebar.ts stopModel())
+    await client.generate({
+      model: LOCAL_MODEL,
+      prompt: '',
+      stream: false,
+      keep_alive: 0,
+    });
+
+    // Ollama unloads asynchronously — poll ps until the model disappears
+    const modelBase = LOCAL_MODEL.split(':')[0];
+    let unloaded = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const ps = await client.ps();
+      const running = ps.models.find(m => m.name.includes(modelBase));
+      if (!running) {
+        unloaded = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    expect(unloaded).toBe(true);
+  }, 120_000);
+
+  it('restarts a local model after stopping it', async () => {
+    // Stop first
+    await client.generate({
+      model: LOCAL_MODEL,
+      prompt: '',
+      stream: false,
+      keep_alive: 0,
+    });
+
+    // Start again
+    await client.generate({
+      model: LOCAL_MODEL,
+      prompt: '',
+      stream: false,
+      keep_alive: '10m',
+    });
+
+    const ps = await client.ps();
+    const running = ps.models.find(m => m.name.includes(LOCAL_MODEL.split(':')[0]));
+    expect(running).toBeDefined();
+  }, 120_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -276,6 +350,97 @@ describe('Cloud model chat', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cloud model — generate (completion)
+// ---------------------------------------------------------------------------
+
+describe('Cloud model generate', () => {
+  it('generates a completion from a cloud model', async () => {
+    if (!cloudModelName) {
+      console.log('Skipping cloud generate test — no cloud model found.');
+      return;
+    }
+
+    const cloudApiKey = process.env.OLLAMA_CLOUD_API_KEY;
+    const cloudClient = cloudApiKey
+      ? new Ollama({
+          host: OLLAMA_HOST,
+          headers: { Authorization: `Bearer ${cloudApiKey}` },
+        })
+      : client;
+
+    const response = await cloudClient.generate({
+      model: cloudModelName,
+      prompt: 'The capital of France is',
+      stream: false,
+    });
+
+    expect(response.response).toBeDefined();
+    expect(response.response.length).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// Cloud model — start / stop
+// ---------------------------------------------------------------------------
+
+describe('Cloud model start and stop', () => {
+  // Cloud models are proxied remotely and do not appear in `ollama ps`.
+  // These tests verify the start/stop API calls succeed without error.
+
+  it('starts a cloud model without error', async () => {
+    if (!cloudModelName) {
+      console.log('Skipping cloud start/stop test — no cloud model found.');
+      return;
+    }
+
+    const cloudApiKey = process.env.OLLAMA_CLOUD_API_KEY;
+    const cloudClient = cloudApiKey
+      ? new Ollama({
+          host: OLLAMA_HOST,
+          headers: { Authorization: `Bearer ${cloudApiKey}` },
+        })
+      : client;
+
+    // Start the cloud model using the same pattern as sidebar.ts startModel()
+    const response = await cloudClient.generate({
+      model: cloudModelName,
+      prompt: '',
+      stream: false,
+      keep_alive: '10m',
+    });
+
+    // The call should complete successfully
+    expect(response).toBeDefined();
+  }, 120_000);
+
+  it('stops a cloud model without error', async () => {
+    if (!cloudModelName) {
+      console.log('Skipping cloud start/stop test — no cloud model found.');
+      return;
+    }
+
+    const cloudApiKey = process.env.OLLAMA_CLOUD_API_KEY;
+    const cloudClient = cloudApiKey
+      ? new Ollama({
+          host: OLLAMA_HOST,
+          headers: { Authorization: `Bearer ${cloudApiKey}` },
+        })
+      : client;
+
+    // Stop the cloud model
+    const response = await cloudClient.generate({
+      model: cloudModelName,
+      prompt: '',
+      stream: false,
+      keep_alive: 0,
+    });
+
+    // The call should complete successfully
+    expect(response).toBeDefined();
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
 // Cloud model detection logic (unit-style, no server needed)
 // ---------------------------------------------------------------------------
 
@@ -366,11 +531,7 @@ This is user text with <b>HTML</b> inside.`;
   });
 
   it('deduplicates by tag name keeping the latest occurrence', () => {
-    const blocks = [
-      '<env>old data</env>',
-      '<workspace>info</workspace>',
-      '<env>new data</env>',
-    ];
+    const blocks = ['<env>old data</env>', '<workspace>info</workspace>', '<env>new data</env>'];
 
     // Simulate the dedup from provider.ts / extension.ts
     const latestByTag = new Map<string, string>();

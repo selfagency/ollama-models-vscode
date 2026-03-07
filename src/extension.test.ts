@@ -2106,8 +2106,9 @@ describe('activate noopLogger', () => {
 
     const ext = await import('./extension.js');
     // activate completes without throwing (lm registration throws "already registered" → warn path)
-    await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
+    const result = await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
     // noopLogger.info and noopLogger.warn were called during activation
+    expect(result).toBeUndefined();
   });
 });
 

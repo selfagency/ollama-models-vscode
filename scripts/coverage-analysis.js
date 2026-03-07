@@ -7,10 +7,7 @@ const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../coverage/covera
 const srcRoot = path.join(__dirname, '../src');
 
 for (const [filePath, info] of Object.entries(data)) {
-  const shortPath = path
-    .relative(srcRoot, filePath)
-    .split(path.sep)
-    .join('/');
+  const shortPath = path.relative(srcRoot, filePath).split(path.sep).join('/');
   if (shortPath.includes('vscode.mock')) continue;
 
   const uncoveredLines = Object.entries(info.s)

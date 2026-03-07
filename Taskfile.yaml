@@ -56,7 +56,21 @@ tasks:
   extension-tests:
     desc: Run extension tests
     cmds:
-      - ./node_modules/.bin/vscode-test test/integration {{.CLI_ARGS}}
+      - ./node_modules/.bin/vscode-test test/extension {{.CLI_ARGS}}
+    silent: false
+
+  integration-tests:
+    desc: Run integration tests
+    cmds:
+      - ./node_modules/.bin/vitest run -c vitest.integration.config.js test/integration {{.CLI_ARGS}}
+    silent: false
+
+  precommit:
+    desc: Run pre-commit checks
+    cmds:
+      - task: check-types
+      - task: lint-fix
+      - task: format
     silent: false
 
   prerelease:
@@ -73,14 +87,21 @@ tasks:
       - ./node_modules/.bin/zx ./scripts/release.mjs {{.CLI_ARGS}}
     silent: false
 
+  test-all:
+    desc: Run all tests
+    cmds:
+      - task: unit-tests
+      - task: extension-tests
+      - task: integration-tests
+    silent: false
+
   test-build-release:
     desc: Test, Build & Release
     cmds:
       - task: check-types
       - task: lint
       - task: check-formatting
-      - task: unit-tests
-      - task: extension-tests
+      - task: test-all
       - task: release
     silent: false
 

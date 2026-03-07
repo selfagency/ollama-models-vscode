@@ -294,8 +294,7 @@ export async function handleChatRequest(
     // Use cloud-authenticated client when the selected model is a cloud model.
     const cloudModelTag = modelId.split(':')[1] ?? '';
     const isCloudModel = cloudModelTag === 'cloud' || cloudModelTag.endsWith('-cloud');
-    const effectiveClient =
-      isCloudModel && extensionContext ? await getCloudOllamaClient(extensionContext) : client;
+    const effectiveClient = isCloudModel && extensionContext ? await getCloudOllamaClient(extensionContext) : client;
 
     try {
       // Convert VS Code messages to the plain Ollama format expected by the client.
