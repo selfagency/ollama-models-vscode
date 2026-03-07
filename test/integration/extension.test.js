@@ -15,6 +15,9 @@ suite('Extension Integration', () => {
 
   test('manageAuthToken command is registered', async () => {
     const commands = await vscode.commands.getCommands(true);
-    assert.ok(commands.includes('ollama-copilot.manageAuthToken'), 'ollama-copilot.manageAuthToken command not registered');
+    assert.ok(
+      commands.includes('ollama-copilot.manageAuthToken'),
+      'ollama-copilot.manageAuthToken command not registered',
+    );
   });
 });

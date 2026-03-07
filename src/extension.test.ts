@@ -694,7 +694,9 @@ describe('activate', () => {
 
     const ext = await import('./extension.js');
 
-    await expect(ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any)).rejects.toThrow(unhandledError);
+    await expect(ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any)).rejects.toThrow(
+      unhandledError,
+    );
   });
 
   it('registers command for managing auth tokens', async () => {
@@ -1163,7 +1165,10 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
       },
       lm: { selectChatModels: vi.fn().mockResolvedValue([]) },
       workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
-      Uri: { file: vi.fn((path: string) => ({ fsPath: path })), joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })) },
+      Uri: {
+        file: vi.fn((path: string) => ({ fsPath: path })),
+        joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })),
+      },
       chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
       commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
     }));
@@ -1224,7 +1229,10 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
       },
       lm: { selectChatModels: vi.fn().mockResolvedValue([]) },
       workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
-      Uri: { file: vi.fn((path: string) => ({ fsPath: path })), joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })) },
+      Uri: {
+        file: vi.fn((path: string) => ({ fsPath: path })),
+        joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })),
+      },
       chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
       commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
     }));

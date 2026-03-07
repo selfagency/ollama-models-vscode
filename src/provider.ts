@@ -230,7 +230,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
    * Native capability is still tracked separately via `nativeToolCallingByModelId`
    * for internal reference.
    */
-  private getAdvertisedToolCalling(nativeToolCalling: boolean): boolean {
+  private getAdvertisedToolCalling(_nativeToolCalling: boolean): boolean {
     // Always advertise true to pass VS Code's picker filtering
     return true;
   }

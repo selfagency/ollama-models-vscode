@@ -71,7 +71,10 @@ export async function fetchModelCapabilities(client: Ollama, modelId: string): P
     // Detect the actual context window from model_info (family-specific keys like
     // llama.context_length, qwen2.context_length, etc.) with a num_ctx fallback,
     // mirroring the logic in OllamaChatModelProvider.getChatModelInfo().
-    const typedInfo = modelInfo as typeof modelInfo & { model_info?: Record<string, unknown> | Map<string, unknown>; modelinfo?: Record<string, unknown> | Map<string, unknown> };
+    const typedInfo = modelInfo as typeof modelInfo & {
+      model_info?: Record<string, unknown> | Map<string, unknown>;
+      modelinfo?: Record<string, unknown> | Map<string, unknown>;
+    };
     const modelInfoData = typedInfo.model_info ?? typedInfo.modelinfo;
     const parameters = (modelInfo as typeof modelInfo & { parameters?: string }).parameters;
     let contextLength = 4096; // Conservative default

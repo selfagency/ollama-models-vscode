@@ -1142,7 +1142,7 @@ describe('LocalModelsProvider', () => {
 
     const downloaded = children.find((c: any) => c.label === 'llama3.2:1b');
     expect(downloaded?.contextValue).toBe('library-model-downloaded-variant');
-    expect((downloaded?.iconPath as { id: string }).id).toBe('check');
+    expect((downloaded!.iconPath as { id: string }).id).toBe('check');
     libraryProvider.dispose();
   });
 
@@ -1776,6 +1776,7 @@ describe('Extracted command handlers', () => {
     const mockShowInfo = vi.fn();
 
     // Stream that throws to simulate an aborted connection
+    // eslint-disable-next-line require-yield
     async function* abortedStream() {
       throw new Error('Request aborted');
     }
