@@ -349,11 +349,6 @@
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.openLibraryModelPage",
-          "when": "view == ollama-library-models && viewItem == cloud-library-model",
-          "group": "inline@1"
-        },
-        {
           "command": "ollama-copilot.openCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
           "group": "inline@1"
