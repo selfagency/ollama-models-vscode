@@ -27,12 +27,14 @@ Implement Modelfile language support and a Modelfile Manager sidebar pane for th
 ## Summary of Changes
 
 **New files:**
+
 - `src/modelfiles.ts` — full Modelfile Manager implementation (~200 lines)
 - `src/modelfiles.test.ts` — unit tests for wizard + provider
 - `syntaxes/modelfile.tmLanguage.json` — TextMate syntax grammar
 - `language-configuration.json` — comment/autoclosing config
 
 **Modified files:**
+
 - `package.json` — view, commands, language, grammar, setting contributions
 - `src/extension.ts` — `registerModelfileManager` wired into activation
 - `src/extension.test.ts` — mock for registerModelfileManager
