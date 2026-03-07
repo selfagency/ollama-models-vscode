@@ -161,6 +161,50 @@ describe('LocalModelsProvider', () => {
     qwenProvider.dispose();
   });
 
+  it('groups qwen2.5vl under qwen family', async () => {
+    const qwenProvider = new LocalModelsProvider(
+      {
+        list: vi.fn().mockResolvedValue({
+          models: [{ name: 'qwen2.5vl:latest', size: 10 }],
+        }),
+        ps: vi.fn().mockResolvedValue({ models: [] }),
+      } as unknown as Ollama,
+      undefined,
+    );
+
+    const groups = await qwenProvider.getChildren();
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe('qwen');
+
+    const children = await qwenProvider.getChildren(groups[0]);
+    expect(children.map((item: any) => item.label)).toEqual(['qwen2.5vl:latest']);
+    qwenProvider.dispose();
+  });
+
+  it('does not show cloud-tagged pulled models in local model list', async () => {
+    const localOnlyProvider = new LocalModelsProvider(
+      {
+        list: vi.fn().mockResolvedValue({
+          models: [
+            { name: 'kimi-k2-thinking:cloud', size: 393 },
+            { name: 'llama3.2:3b', size: 1000 },
+          ],
+        }),
+        ps: vi.fn().mockResolvedValue({ models: [] }),
+      } as unknown as Ollama,
+      undefined,
+    );
+
+    const groups = await localOnlyProvider.getChildren();
+    expect(groups.some((g: any) => g.label === 'kimi')).toBe(false);
+    expect(groups.some((g: any) => g.label === 'llama')).toBe(true);
+
+    const cached = localOnlyProvider.getCachedLocalModelNames();
+    expect(cached.has('kimi-k2-thinking:cloud')).toBe(false);
+    expect(cached.has('llama3.2:3b')).toBe(true);
+    localOnlyProvider.dispose();
+  });
+
   it('invokes onLocalModelsChanged callback when local models are refreshed', async () => {
     const onLocalModelsChanged = vi.fn();
     const callbackProvider = new LocalModelsProvider(mockClient, undefined, onLocalModelsChanged);
@@ -448,11 +492,8 @@ describe('LocalModelsProvider', () => {
     localProvider.dispose();
   });
 
-  it('startModel auto-pulls cloud-tagged model when not found then retries', async () => {
-    const generate = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("model 'kimi-k2-thinking:cloud' not found"))
-      .mockResolvedValueOnce(undefined);
+  it('startModel pulls cloud-tagged model before generate', async () => {
+    const generate = vi.fn().mockResolvedValue(undefined);
     const pull = vi.fn().mockResolvedValue(undefined);
 
     const localProvider = new LocalModelsProvider(
@@ -468,7 +509,7 @@ describe('LocalModelsProvider', () => {
     await localProvider.startModel('kimi-k2-thinking:cloud');
 
     expect(pull).toHaveBeenCalledWith({ model: 'kimi-k2-thinking:cloud', stream: false });
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(1);
     localProvider.dispose();
   });
 
@@ -1102,6 +1143,8 @@ describe('Extracted command handlers', () => {
 
     const mockCloudProvider = {
       resolveRunnableCloudModelName: vi.fn().mockResolvedValue('cogito-2.1:671b-cloud'),
+      markModelWarm: vi.fn(),
+      refresh: vi.fn(),
     } as any;
 
     const item = new ModelTreeItem('cogito-2.1', 'cloud-stopped');
@@ -1110,6 +1153,8 @@ describe('Extracted command handlers', () => {
 
     expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('cogito-2.1');
     expect(mockProvider.startModel).toHaveBeenCalledWith('cogito-2.1:671b-cloud');
+    expect(mockCloudProvider.markModelWarm).toHaveBeenCalledWith('cogito-2.1');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleStopCloudModel stops cloud-running models', async () => {
@@ -1119,11 +1164,18 @@ describe('Extracted command handlers', () => {
       stopModel: vi.fn(),
     } as any;
 
+    const mockCloudProvider = {
+      markModelStopped: vi.fn(),
+      refresh: vi.fn(),
+    } as any;
+
     const item = new ModelTreeItem('test-model', 'cloud-running');
 
-    handleStopCloudModel(item, mockProvider);
+    await handleStopCloudModel(item, mockProvider, mockCloudProvider);
 
     expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.markModelStopped).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleOpenLibraryModelPage handles library-model type', async () => {

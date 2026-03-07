@@ -126,6 +126,13 @@ function extractModelFamily(modelName: string): string {
     return withoutTrailingVersion;
   }
 
+  // Embedded numeric version naming without dash (qwen2.5vl, qwen2math)
+  // should also group by the leading alpha family token.
+  const embeddedVersionMatch = /^([a-z]+)[\d.]+[a-z0-9]*$/i.exec(baseName);
+  if (embeddedVersionMatch?.[1]) {
+    return embeddedVersionMatch[1].toLowerCase();
+  }
+
   // No pattern matched, return the base name as-is
   return baseName;
 }
@@ -333,7 +340,9 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         runningMap.set(model.name, { durationMs, id, processor });
       }
 
-      const items = listResponse.models
+      const visibleLocalModels = listResponse.models.filter(model => !this.isCloudTaggedModel(model.name));
+
+      const items = visibleLocalModels
         .map(model => {
           const running = runningMap.get(model.name);
           const item = new ModelTreeItem(
@@ -401,7 +410,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         `[Ollama] Local models loaded: ${items.length} total, ${items.filter(m => m.type === 'local-running').length} running`,
       );
 
-      this.cachedLocalModelNames = new Set(listResponse.models.map(m => m.name));
+      this.cachedLocalModelNames = new Set(visibleLocalModels.map(m => m.name));
       return items.length > 0 ? items : [makeStatusItem('No local models found')];
     } catch (error) {
       this.logChannel?.exception('[Ollama] Failed to load local models', error);
@@ -491,20 +500,40 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     try {
       this.logChannel?.debug(`[Ollama] Starting local model: ${modelName}`);
       await window.withProgress({ location: 15, title: `Starting ${modelName}...` }, async () => {
-        try {
-          await this.client.generate({ model: modelName, prompt: '', stream: false, keep_alive: '10m' });
-        } catch (error) {
-          if (this.isCloudTaggedModel(modelName) && this.isModelNotFoundError(error)) {
-            this.logChannel?.info(`[Ollama] Cloud model not found locally; pulling first: ${modelName}`);
-            await this.client.pull({ model: modelName, stream: false });
-            await this.client.generate({ model: modelName, prompt: '', stream: false, keep_alive: '10m' });
-          } else {
-            throw error;
-          }
+        const isCloudModel = this.isCloudTaggedModel(modelName);
+        if (this.isCloudTaggedModel(modelName)) {
+          // Cloud models should be pulled first (same behavior as `ollama run`).
+          this.logChannel?.info(`[Ollama] Pulling cloud model before start: ${modelName}`);
+          await this.client.pull({ model: modelName, stream: false });
         }
-        this.logChannel?.info(`[Ollama] Model started: ${modelName}`);
+        await this.client.generate({ model: modelName, prompt: '', stream: false, keep_alive: '10m' });
+
+        let running = false;
+        try {
+          const { models } = await this.client.ps();
+          running = models.some(m => m.name === modelName);
+        } catch {
+          // If ps() fails, fall back to optimistic status messaging below.
+        }
+
+        if (running) {
+          this.logChannel?.info(`[Ollama] Model started: ${modelName}`);
+        } else if (isCloudModel) {
+          this.logChannel?.info(`[Ollama] Cloud model warmed but not persistent in /api/ps: ${modelName}`);
+        } else {
+          this.logChannel?.warn(`[Ollama] Model warm-up completed but not shown as running: ${modelName}`);
+        }
+
         this.refresh();
-        window.showInformationMessage(`Model ${modelName} started`);
+        if (running) {
+          window.showInformationMessage(`Model ${modelName} started`);
+        } else if (isCloudModel) {
+          window.showInformationMessage(
+            `Model ${modelName} is ready. Cloud models may not appear as running until actively used.`,
+          );
+        } else {
+          window.showWarningMessage(`Model ${modelName} warmed up, but is not shown as running.`);
+        }
       });
     } catch (error) {
       this.logChannel?.exception(`[Ollama] Failed to start model ${modelName}`, error);
@@ -516,11 +545,6 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private isCloudTaggedModel(modelName: string): boolean {
     const tag = modelName.split(':')[1] ?? '';
     return tag === 'cloud' || tag.endsWith('-cloud');
-  }
-
-  private isModelNotFoundError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return /not found/i.test(message);
   }
 
   /**
@@ -912,6 +936,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private loadPromise: Promise<ModelTreeItem[]> | null = null;
   private refreshIntervals: NodeJS.Timeout[] = [];
   private cachedNames = new Set<string>();
+  private warmedModelNames = new Set<string>();
 
   constructor(
     private context: ExtensionContext,
@@ -970,6 +995,16 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
   getCachedModelNames(): Set<string> {
     return new Set(this.cachedNames);
+  }
+
+  markModelWarm(modelName: string): void {
+    this.warmedModelNames.add(modelName.split(':')[0]);
+    this.treeChangeEmitter.fire(null);
+  }
+
+  markModelStopped(modelName: string): void {
+    this.warmedModelNames.delete(modelName.split(':')[0]);
+    this.treeChangeEmitter.fire(null);
   }
 
   async getCloudModelNamesForFilter(): Promise<Set<string>> {
@@ -1149,7 +1184,9 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         .map(fullName => {
           const baseName = fullName.split(':')[0];
           const runningInfo = runningModels.get(baseName);
-          const isRunning = typeof runningInfo?.durationMs === 'number' && runningInfo.durationMs > 0;
+          const isRunning =
+            (typeof runningInfo?.durationMs === 'number' && runningInfo.durationMs > 0) ||
+            this.warmedModelNames.has(baseName);
           const item = new ModelTreeItem(
             fullName,
             isRunning ? 'cloud-running' : 'cloud-stopped',
@@ -1408,16 +1445,24 @@ export async function handleStartCloudModel(
       : item.label.includes(':')
         ? item.label
         : `${item.label}:cloud`;
-    void localProvider.startModel(resolvedModel);
+    await localProvider.startModel(resolvedModel);
+    cloudProvider?.markModelWarm(item.label);
+    cloudProvider?.refresh();
   }
 }
 
 /**
  * Command handler: stop cloud model
  */
-export function handleStopCloudModel(item: ModelTreeItem, localProvider: LocalModelsProvider): void {
+export async function handleStopCloudModel(
+  item: ModelTreeItem,
+  localProvider: LocalModelsProvider,
+  cloudProvider?: CloudModelsProvider,
+): Promise<void> {
   if (item && item.type === 'cloud-running') {
-    void localProvider.stopModel(item.label);
+    await localProvider.stopModel(item.label);
+    cloudProvider?.markModelStopped(item.label);
+    cloudProvider?.refresh();
   }
 }
 
@@ -1473,7 +1518,7 @@ export function registerSidebar(
       handleStartCloudModel(item, localProvider, cloudProvider),
     ),
     commands.registerCommand('ollama-copilot.stopCloudModel', (item: ModelTreeItem) =>
-      handleStopCloudModel(item, localProvider),
+      handleStopCloudModel(item, localProvider, cloudProvider),
     ),
     { dispose: () => localProvider.dispose() },
     { dispose: () => libraryProvider.dispose() },
