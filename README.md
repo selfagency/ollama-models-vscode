@@ -27,7 +27,6 @@
 - 🖼️ **Vision Support** - Image input for models with vision capabilities
 - 🏠 **Local Execution** - Local models run on your machine with full privacy—no data leaves your computer
 - ⚡ **Streaming** - Real-time response streaming for faster interactions
--
 
 ## 🔧 Requirements
 

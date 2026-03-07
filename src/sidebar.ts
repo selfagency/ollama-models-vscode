@@ -31,7 +31,8 @@ export class ModelTreeItem extends TreeItem {
       | 'library-model'
       | 'library-model-variant'
       | 'library-model-downloaded-variant'
-      | 'cloud-model'
+      | 'cloud-running'
+      | 'cloud-stopped'
       | 'status',
     public readonly size?: number,
     public readonly durationMs?: number,
@@ -48,20 +49,20 @@ export class ModelTreeItem extends TreeItem {
 
     if (type === 'local-running') {
       this.iconPath = createThemeIcon('play-circle');
-    } else if (type === 'local-stopped') {
+    } else if (type === 'local-stopped' || type === 'cloud-stopped') {
       this.iconPath = createThemeIcon('stop-circle');
+    } else if (type === 'local-running' || type === 'cloud-running') {
+      this.iconPath = createThemeIcon('play-circle');
     } else if (type === 'library-model-downloaded-variant') {
       this.iconPath = createThemeIcon('check');
     }
 
-    if (type === 'local-stopped') {
+    if (type === 'local-stopped' || type === 'cloud-stopped') {
       this.description = this.formatSize(size);
-    } else if (type === 'local-running') {
+    } else if (type === 'local-running' || type === 'cloud-running') {
       const sizeStr = this.formatSize(size);
       const durationStr = this.formatDuration(durationMs);
       this.description = [sizeStr, durationStr].filter(Boolean).join(' • ');
-    } else if (type === 'cloud-model') {
-      this.description = this.formatSize(size);
     } else if (type === 'library-model-variant' || type === 'library-model-downloaded-variant') {
       this.description = this.formatSize(size);
     }
@@ -937,6 +938,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private loadPromise: Promise<ModelTreeItem[]> | null = null;
   private refreshIntervals: NodeJS.Timeout[] = [];
   private cachedNames = new Set<string>();
+  private warmedModelNames = new Set<string>();
 
   constructor(
     private context: ExtensionContext,
@@ -995,6 +997,16 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
   getCachedModelNames(): Set<string> {
     return new Set(this.cachedNames);
+  }
+
+  markModelWarm(modelName: string): void {
+    this.warmedModelNames.add(modelName.split(':')[0]);
+    this.treeChangeEmitter.fire(null);
+  }
+
+  markModelStopped(modelName: string): void {
+    this.warmedModelNames.delete(modelName.split(':')[0]);
+    this.treeChangeEmitter.fire(null);
   }
 
   async getCloudModelNamesForFilter(): Promise<Set<string>> {
@@ -1119,7 +1131,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      // First, fetch running status from cloud API
+      // Fetch running status from cloud API
       const statusResponse = await fetch('https://ollama.com/api/tags', {
         method: 'GET',
         headers: {
@@ -1137,13 +1149,14 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         models?: Array<{ name: string; size?: number; expires_at?: string }>;
       };
 
-      // Build size map for cloud models returned by API tags endpoint.
-      const modelSizes = new Map<string, number>();
+      // Build running status map from authenticated API (base names → timing + size)
+      const runningModels = new Map<string, { durationMs?: number; size?: number }>();
       for (const model of statusJson.models ?? []) {
         const baseName = model.name.split(':')[0];
-        if (typeof model.size === 'number') {
-          modelSizes.set(baseName, model.size);
-        }
+        const durationMs = model.expires_at
+          ? Math.max(0, new Date(model.expires_at).getTime() - Date.now())
+          : undefined;
+        runningModels.set(baseName, { durationMs, size: model.size });
       }
 
       // Fetch cloud catalog page — using the tag=cloud filter returns pages that
@@ -1159,9 +1172,9 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
       const html = await libraryResponse.text();
 
-      // Match hrefs that include a colon tag containing "cloud" — this captures
-      // the full model name with :cloud suffix rather than just the base family name.
-      const cloudMatches = [...html.matchAll(/href="\/library\/([^"?#]+:[^"?#]*cloud[^"?#]*)"/g)];
+      // Match hrefs for library model names — base names without colons, query params, or fragments.
+      // The tag=cloud filter on the URL ensures all matched items are cloud models.
+      const cloudMatches = [...html.matchAll(/href="\/library\/([^":?#]+)"/g)];
 
       const cloudModelNames = [
         ...new Set(
@@ -1172,10 +1185,18 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       ];
 
       const items = cloudModelNames
-        .map(fullName => {
-          const baseName = fullName.split(':')[0];
-          const item = new ModelTreeItem(fullName, 'cloud-model', modelSizes.get(baseName));
-          item.tooltip = `Cloud model: ${fullName}`;
+        .map(modelName => {
+          const runningInfo = runningModels.get(modelName);
+          const isRunning =
+            (typeof runningInfo?.durationMs === 'number' && runningInfo.durationMs > 0) ||
+            this.warmedModelNames.has(modelName);
+          const item = new ModelTreeItem(
+            modelName,
+            isRunning ? 'cloud-running' : 'cloud-stopped',
+            runningInfo?.size,
+            runningInfo?.durationMs,
+          );
+          item.tooltip = `Cloud model: ${modelName}`;
           return item;
         })
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -1264,7 +1285,7 @@ export async function handleManageCloudApiKey(
  * Command handler: open cloud model page
  */
 export function handleOpenCloudModel(item: ModelTreeItem): void {
-  if (item && item.type === 'cloud-model') {
+  if (item && (item.type === 'cloud-running' || item.type === 'cloud-stopped')) {
     void env.openExternal(Uri.parse(getLibraryModelUrl(item.label)));
   }
 }
@@ -1273,7 +1294,13 @@ export function handleOpenCloudModel(item: ModelTreeItem): void {
  * Command handler: delete model
  */
 export async function handleDeleteModel(item: ModelTreeItem, localProvider: LocalModelsProvider): Promise<void> {
-  if (item && (item.type === 'local-running' || item.type === 'local-stopped')) {
+  if (
+    item &&
+    (item.type === 'local-running' ||
+      item.type === 'local-stopped' ||
+      item.type === 'cloud-running' ||
+      item.type === 'cloud-stopped')
+  ) {
     const answer = await window.showWarningMessage(`Delete model "${item.label}"?`, 'Delete', 'Cancel');
     if (answer === 'Delete') {
       void localProvider.deleteModel(item.label);
@@ -1400,8 +1427,43 @@ export function handleStartModel(item: ModelTreeItem, localProvider: LocalModels
  * Command handler: stop model
  */
 export function handleStopModel(item: ModelTreeItem, localProvider: LocalModelsProvider): void {
-  if (item && item.type === 'local-running') {
+  if (item && (item.type === 'local-running' || item.type === 'cloud-running')) {
     void localProvider.stopModel(item.label);
+  }
+}
+
+/**
+ * Command handler: start cloud model
+ */
+export async function handleStartCloudModel(
+  item: ModelTreeItem,
+  localProvider: LocalModelsProvider,
+  cloudProvider?: CloudModelsProvider,
+): Promise<void> {
+  if (item && item.type === 'cloud-stopped') {
+    const resolvedModel = cloudProvider
+      ? await cloudProvider.resolveRunnableCloudModelName(item.label)
+      : item.label.includes(':')
+        ? item.label
+        : `${item.label}:cloud`;
+    await localProvider.startModel(resolvedModel);
+    cloudProvider?.markModelWarm(item.label);
+    cloudProvider?.refresh();
+  }
+}
+
+/**
+ * Command handler: stop cloud model
+ */
+export async function handleStopCloudModel(
+  item: ModelTreeItem,
+  localProvider: LocalModelsProvider,
+  cloudProvider?: CloudModelsProvider,
+): Promise<void> {
+  if (item && item.type === 'cloud-running') {
+    await localProvider.stopModel(item.label);
+    cloudProvider?.markModelStopped(item.label);
+    cloudProvider?.refresh();
   }
 }
 
@@ -1453,6 +1515,12 @@ export function registerSidebar(
       handleStartModel(item, localProvider),
     ),
     commands.registerCommand('ollama-copilot.stopModel', (item: ModelTreeItem) => handleStopModel(item, localProvider)),
+    commands.registerCommand('ollama-copilot.startCloudModel', (item: ModelTreeItem) =>
+      handleStartCloudModel(item, localProvider, cloudProvider),
+    ),
+    commands.registerCommand('ollama-copilot.stopCloudModel', (item: ModelTreeItem) =>
+      handleStopCloudModel(item, localProvider, cloudProvider),
+    ),
     { dispose: () => localProvider.dispose() },
     { dispose: () => libraryProvider.dispose() },
     { dispose: () => cloudProvider.dispose() },

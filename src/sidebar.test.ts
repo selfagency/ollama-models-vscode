@@ -620,6 +620,357 @@ describe('LocalModelsProvider', () => {
     expect(item.description).toBeDefined();
   });
 
+  // Cloud model catalog HTML parsing tests
+  it('parses cloud model names from library catalog HTML', async () => {
+    const catalogHtml = [
+      '<a href="/library/llama3.2">Llama 3.2</a>',
+      '<a href="/library/kimi-k2-thinking">Kimi K2 Thinking</a>',
+      '<a href="/library/gemma3n">Gemma 3n</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => catalogHtml });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    // getChildren() returns family groups; drill into each to find individual models
+    const groups = await cloudProvider.getChildren();
+    const allModels: any[] = [];
+    for (const group of groups) {
+      const children = await cloudProvider.getChildren(group);
+      allModels.push(...children);
+    }
+
+    expect(allModels.some((m: any) => m.label === 'llama3.2')).toBe(true);
+    expect(allModels.some((m: any) => m.label === 'kimi-k2-thinking')).toBe(true);
+    expect(allModels.some((m: any) => m.label === 'gemma3n')).toBe(true);
+    cloudProvider.dispose();
+  });
+
+  it('excludes href paths with query params, fragments, or colons from catalog parse', async () => {
+    const catalogHtml = [
+      '<a href="/library/valid-model">Valid</a>',
+      '<a href="/library/ignored:tag">Should not match due to colon</a>',
+      '<a href="/library/ignored?q=1">Should not match due to query</a>',
+      '<a href="/library/ignored#anchor">Should not match due to fragment</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => catalogHtml });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+    const allModels: any[] = [];
+    for (const group of groups) {
+      const children = await cloudProvider.getChildren(group);
+      allModels.push(...children);
+    }
+    const allLabels = allModels.map((m: any) => m.label);
+
+    expect(allLabels.some(l => l === 'valid-model')).toBe(true);
+    // Paths terminated by colon, query string, or fragment are not extracted by the regex
+    expect(allLabels.some(l => l.startsWith('ignored'))).toBe(false);
+    cloudProvider.dispose();
+  });
+
+  it('returns full model names including org-prefixed paths from catalog', async () => {
+    const catalogHtml = [
+      '<a href="/library/llama3.2">Base</a>',
+      '<a href="/library/org/custom-model">Org model</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => catalogHtml });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+    const allModels: any[] = [];
+    for (const group of groups) {
+      const children = await cloudProvider.getChildren(group);
+      allModels.push(...children);
+    }
+    const allLabels = allModels.map((m: any) => m.label);
+
+    expect(allLabels.some(l => l === 'llama3.2')).toBe(true);
+    expect(allLabels.some(l => l === 'org/custom-model')).toBe(true);
+    cloudProvider.dispose();
+  });
+
+  it('marks cloud model as running when present in /api/tags with future expires_at', async () => {
+    const futureDate = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              models: [{ name: 'llama3.2', size: 2_000_000_000, expires_at: futureDate }],
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<a href="/library/llama3.2">Llama 3.2</a><a href="/library/gemma3n">Gemma 3n</a>',
+        });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    // Collect all models from all family groups
+    const groups = await cloudProvider.getChildren();
+    const allModels: any[] = [];
+    for (const group of groups) {
+      const children = await cloudProvider.getChildren(group);
+      allModels.push(...children);
+    }
+
+    const llama = allModels.find((m: any) => m.label === 'llama3.2');
+    const gemma = allModels.find((m: any) => m.label === 'gemma3n');
+
+    expect(llama?.type).toBe('cloud-running');
+    expect(gemma?.type).toBe('cloud-stopped');
+    cloudProvider.dispose();
+  });
+
+  it('marks cloud model as stopped when expires_at is in the past', async () => {
+    const pastDate = new Date(Date.now() - 1000).toISOString();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              models: [{ name: 'llama3.2', size: 2_000_000_000, expires_at: pastDate }],
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<a href="/library/llama3.2">Llama 3.2</a>',
+        });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+    const llamaGroup = groups.find((g: any) => g.label === 'llama');
+    const models = await cloudProvider.getChildren(llamaGroup);
+    const llama = models.find((m: any) => m.label === 'llama3.2');
+
+    expect(llama?.type).toBe('cloud-stopped');
+    cloudProvider.dispose();
+  });
+
+  it('running cloud model carries size and durationMs from /api/tags', async () => {
+    const futureDate = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              models: [{ name: 'llama3.2', size: 3_000_000_000, expires_at: futureDate }],
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: async () => '<a href="/library/llama3.2">Llama 3.2</a>',
+        });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+    const llamaGroup = groups.find((g: any) => g.label === 'llama');
+    const models = await cloudProvider.getChildren(llamaGroup);
+    const llama = models.find((m: any) => m.label === 'llama3.2');
+
+    expect(llama?.size).toBe(3_000_000_000);
+    expect(typeof llama?.durationMs).toBe('number');
+    expect(llama?.durationMs).toBeGreaterThan(0);
+    cloudProvider.dispose();
+  });
+
+  it('deduplicates repeated catalog hrefs', async () => {
+    const catalogHtml = [
+      '<a href="/library/llama3.2">First</a>',
+      '<a href="/library/llama3.2">Duplicate</a>',
+      '<a href="/library/gemma3n">Other</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => catalogHtml });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+    const llamaGroup = groups.find((g: any) => g.label === 'llama');
+    const llamaModels = await cloudProvider.getChildren(llamaGroup);
+
+    const llamaItems = llamaModels.filter((m: any) => m.label === 'llama3.2');
+    expect(llamaItems).toHaveLength(1);
+    cloudProvider.dispose();
+  });
+
+  it('returns cloud model family groups sorted alphabetically', async () => {
+    const catalogHtml = [
+      '<a href="/library/zephyr">Z</a>',
+      '<a href="/library/alpaca">A</a>',
+      '<a href="/library/mistral">M</a>',
+    ].join('\n');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => catalogHtml });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const groups = await cloudProvider.getChildren();
+
+    // Family groups are sorted alphabetically
+    expect(groups[0].label).toBe('alpaca');
+    expect(groups[1].label).toBe('mistral');
+    expect(groups[2].label).toBe('zephyr');
+    cloudProvider.dispose();
+  });
+
+  it('shows No cloud models found when catalog HTML has no library links', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: async () => '<html><body>no model links here</body></html>' });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const models = await cloudProvider.getChildren();
+
+    expect(models).toHaveLength(1);
+    expect(models[0].label).toBe('No cloud models found');
+    expect(models[0].contextValue).toBe('status');
+    cloudProvider.dispose();
+  });
+
+  it('shows failed status when cloud catalog fetch returns non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if ((url as string).includes('/api/tags')) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+        return Promise.resolve({ ok: false, status: 503 });
+      }),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const models = await cloudProvider.getChildren();
+
+    expect(models).toHaveLength(1);
+    expect(models[0].label).toBe('Failed to load cloud models');
+    expect(models[0].contextValue).toBe('status');
+    cloudProvider.dispose();
+  });
+
+  it('shows failed status when cloud /api/tags returns non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve({ ok: false, status: 401 })),
+    );
+
+    const cloudProvider = new CloudModelsProvider(
+      { secrets: { get: vi.fn().mockResolvedValue('test-key') } },
+      undefined,
+    );
+
+    const models = await cloudProvider.getChildren();
+
+    expect(models).toHaveLength(1);
+    expect(models[0].label).toBe('Failed to load cloud models');
+    expect(models[0].contextValue).toBe('status');
+    cloudProvider.dispose();
+  });
+
   it('formats durations correctly for running models', () => {
     const oneHourMs = 60 * 60 * 1000;
     const item = new ModelTreeItem('test', 'local-running', 1000, oneHourMs);
@@ -1102,18 +1453,76 @@ describe('Extracted command handlers', () => {
     expect(mockProvider.startModel).not.toHaveBeenCalled();
   });
 
-  it('handleStopModel ignores cloud models', async () => {
+  it('handleStopModel stops cloud-running models', async () => {
     const { handleStopModel, ModelTreeItem } = await import('./sidebar.js');
 
     const mockProvider = {
       stopModel: vi.fn(),
     } as any;
 
-    const item = new ModelTreeItem('test-model', 'cloud-model');
+    const item = new ModelTreeItem('test-model', 'cloud-running');
 
     handleStopModel(item, mockProvider);
 
-    expect(mockProvider.stopModel).not.toHaveBeenCalled();
+    expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model');
+  });
+
+  it('handleStartCloudModel starts cloud-stopped models with explicit tag', async () => {
+    const { handleStartCloudModel, ModelTreeItem } = await import('./sidebar.js');
+
+    const mockProvider = {
+      startModel: vi.fn(),
+    } as any;
+
+    const item = new ModelTreeItem('test-model:cloud', 'cloud-stopped');
+
+    await handleStartCloudModel(item, mockProvider);
+
+    expect(mockProvider.startModel).toHaveBeenCalledWith('test-model:cloud');
+  });
+
+  it('handleStartCloudModel resolves base name to :cloud / :-cloud tag', async () => {
+    const { handleStartCloudModel, ModelTreeItem } = await import('./sidebar.js');
+
+    const mockProvider = {
+      startModel: vi.fn(),
+    } as any;
+
+    const mockCloudProvider = {
+      resolveRunnableCloudModelName: vi.fn().mockResolvedValue('cogito-2.1:671b-cloud'),
+      markModelWarm: vi.fn(),
+      refresh: vi.fn(),
+    } as any;
+
+    const item = new ModelTreeItem('cogito-2.1', 'cloud-stopped');
+
+    await handleStartCloudModel(item, mockProvider, mockCloudProvider);
+
+    expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('cogito-2.1');
+    expect(mockProvider.startModel).toHaveBeenCalledWith('cogito-2.1:671b-cloud');
+    expect(mockCloudProvider.markModelWarm).toHaveBeenCalledWith('cogito-2.1');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
+  });
+
+  it('handleStopCloudModel stops cloud-running models', async () => {
+    const { handleStopCloudModel, ModelTreeItem } = await import('./sidebar.js');
+
+    const mockProvider = {
+      stopModel: vi.fn(),
+    } as any;
+
+    const mockCloudProvider = {
+      markModelStopped: vi.fn(),
+      refresh: vi.fn(),
+    } as any;
+
+    const item = new ModelTreeItem('test-model', 'cloud-running');
+
+    await handleStopCloudModel(item, mockProvider, mockCloudProvider);
+
+    expect(mockProvider.stopModel).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.markModelStopped).toHaveBeenCalledWith('test-model');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleOpenLibraryModelPage handles library-model type', async () => {
