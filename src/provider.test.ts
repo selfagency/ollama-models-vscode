@@ -967,9 +967,9 @@ describe('OllamaChatModelProvider crash handling', () => {
 
   it('shows error message when model runner crashes', async () => {
     const generate = vi.fn().mockResolvedValue({});
-    const chat = vi.fn().mockRejectedValue(
-      new Error('model runner has unexpectedly stopped, please check ollama server logs'),
-    );
+    const chat = vi
+      .fn()
+      .mockRejectedValue(new Error('model runner has unexpectedly stopped, please check ollama server logs'));
 
     vi.mocked(getOllamaClient).mockResolvedValueOnce({ chat, generate, abort: vi.fn() } as any);
 

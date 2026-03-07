@@ -439,13 +439,25 @@ export async function handleChatRequest(
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       outputChannel?.exception('[Ollama] Chat participant request failed', error);
-      const isCrashError =
-        error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
+      const isCrashError = error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
       if (isCrashError) {
-        void vscode.window.showErrorMessage(
+        // Best-effort unload to keep behaviour consistent with the provider path.
+        void client.generate({ model: modelId, prompt: '', keep_alive: 0, stream: false }).catch(() => {});
+        const selection = await vscode.window.showErrorMessage(
           'The Ollama model runner crashed. Please check the Ollama server logs and restart if needed.',
           'Open Logs',
         );
+        if (selection === 'Open Logs') {
+          const logsPath = join(homedir(), '.ollama', 'logs', 'server.log');
+          try {
+            const document = await vscode.workspace.openTextDocument(vscode.Uri.file(logsPath));
+            await vscode.window.showTextDocument(document, { preview: false });
+          } catch {
+            void vscode.window.showWarningMessage(
+              `Could not open Ollama logs at ${logsPath}. Please check that the Ollama server is installed and logging is enabled.`,
+            );
+          }
+        }
       }
       stream.markdown(`Error: ${message}`);
     }
