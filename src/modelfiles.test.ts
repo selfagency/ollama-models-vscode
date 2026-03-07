@@ -186,9 +186,9 @@ describe('ModelfileItem', () => {
     expect(item.label).toBe('pirate.modelfile');
   });
 
-  it('opens the file on click via command', () => {
+  it('does not set a click command (tree node handles selection)', () => {
     const item = new ModelfileItem({ fsPath: '/some/dir/pirate.modelfile' });
-    expect(item.command?.command).toBe('vscode.open');
+    expect(item.command).toBeUndefined();
   });
 });
 
@@ -485,13 +485,13 @@ describe('handleBuildModelfile', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls client.create with model name and modelfile content', async () => {
+  it('calls client.create with structured fields from parsed Modelfile', async () => {
     const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
     const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
     expect(mockClient.create).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'my-model', modelfile: 'FROM llama3.2\nSYSTEM """test"""' }),
+      expect.objectContaining({ model: 'my-model', from: 'llama3.2', system: 'test', stream: true }),
     );
   });
 
