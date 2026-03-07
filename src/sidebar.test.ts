@@ -1182,6 +1182,8 @@ describe('Extracted command handlers', () => {
 
     expect(mockCloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('new-cloud-model');
     expect(mockStartModel).toHaveBeenCalledWith('new-cloud-model:cloud');
+    expect(mockCloudProvider.markModelWarm).toHaveBeenCalledWith('new-cloud-model', 'new-cloud-model:cloud');
+    expect(mockCloudProvider.refresh).toHaveBeenCalled();
   });
 
   it('handleStopCloudModel stops cloud-running models', async () => {
