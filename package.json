@@ -548,22 +548,22 @@
     "views": {
       "ollama-explorer": [
         {
-          "icon": "$(server)",
+          "icon": "$(list-flat)",
           "id": "ollama-local-models",
           "name": "Local Models"
         },
         {
-          "icon": "$(globe)",
+          "icon": "$(list-flat)",
           "id": "ollama-cloud-models",
           "name": "Cloud Models"
         },
         {
-          "icon": "$(cloud)",
+          "icon": "$(list-flat)",
           "id": "ollama-library-models",
           "name": "Library"
         },
         {
-          "icon": "$(file-code)",
+          "icon": "$(list-flat)",
           "id": "ollama-modelfiles",
           "name": "Modelfiles"
         }
