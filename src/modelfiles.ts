@@ -284,7 +284,7 @@ export class ModelfilesProvider implements vscode.TreeDataProvider<ModelfileItem
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(e => new ModelfileItem(vscode.Uri.file(join(this.folderPath, e.name))));
     } catch (error) {
-      this.log?.error(`[Ollama] Failed to read modelfiles folder: ${String(error)}`);
+      this.log?.error(`[client] failed to read modelfiles folder: ${String(error)}`);
       return [];
     }
   }
@@ -397,12 +397,12 @@ export async function handleBuildModelfile(
           }
         }
 
-        log?.info(`[Ollama] Model built: ${modelName}`);
+        log?.info(`[client] model built: ${modelName}`);
         await vscode.commands.executeCommand('ollama-copilot.refreshLocalModels');
         vscode.window.showInformationMessage(`Model "${modelName}" built successfully`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        log?.error(`[Ollama] Failed to build model: ${msg}`);
+        log?.error(`[client] failed to build model: ${msg}`);
         vscode.window.showErrorMessage(`Failed to build model: ${msg}`);
       }
     },
@@ -412,7 +412,7 @@ export async function handleBuildModelfile(
 export async function handleOpenModelfilesFolder(folderPath: string, log?: DiagnosticsLogger): Promise<void> {
   try {
     await ensureModelfilesFolder(folderPath);
-    log?.info(`[Ollama] Opening modelfiles folder: ${folderPath}`);
+    log?.info(`[client] opening modelfiles folder: ${folderPath}`);
     const folderUri = vscode.Uri.file(folderPath);
     const opened = await vscode.env.openExternal(folderUri);
     if (!opened) {
@@ -420,7 +420,7 @@ export async function handleOpenModelfilesFolder(folderPath: string, log?: Diagn
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    log?.error(`[Ollama] Failed to open modelfiles folder: ${msg}`);
+    log?.error(`[client] failed to open modelfiles folder: ${msg}`);
     vscode.window.showErrorMessage(`Failed to open Modelfiles folder: ${msg}`);
   }
 }

@@ -103,6 +103,12 @@
         "category": "Ollama"
       },
       {
+        "command": "ollama-copilot.dumpPerformanceSnapshot",
+        "title": "Dump Performance Snapshot",
+        "icon": "$(pulse)",
+        "category": "Ollama"
+      },
+      {
         "command": "ollama-copilot.filterLocalModels",
         "title": "Filter Local Models",
         "icon": "$(filter)",

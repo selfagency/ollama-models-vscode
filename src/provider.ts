@@ -128,7 +128,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
       return resolvedModels.length > 0 ? resolvedModels : this.cachedModelList;
     } catch (error) {
-      this.outputChannel.exception('[Ollama] Failed to fetch models', error);
+      this.outputChannel.exception('[client] failed to fetch models', error);
       return this.cachedModelList;
     }
   }
@@ -357,7 +357,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         nativeToolCalling,
       );
     } catch (error) {
-      this.outputChannel.exception(`[Ollama] Failed to get model info for ${modelId}`, error);
+      this.outputChannel.exception(`[client] failed to get model info for ${modelId}`, error);
       return undefined;
     }
   }
@@ -518,7 +518,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
       try {
         this.outputChannel.debug?.(
-          `[Ollama] Chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}`,
+          `[client] chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}`,
         );
         response = await perRequestClient.chat({
           model: runtimeModelId,
@@ -527,16 +527,16 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           tools,
           ...(shouldThink ? { think: true } : {}),
         });
-        this.outputChannel.debug?.(`[Ollama] Chat response stream started for ${runtimeModelId}`);
+        this.outputChannel.debug?.(`[client] chat response stream started for ${runtimeModelId}`);
       } catch (innerError) {
-        this.outputChannel.exception(`[Ollama] Chat request failed for model ${runtimeModelId}`, innerError);
+        this.outputChannel.exception(`[client] chat request failed for model ${runtimeModelId}`, innerError);
         if (
           shouldThink &&
           (this.isThinkingNotSupportedError(innerError) || this.isThinkingInternalServerError(innerError))
         ) {
           this.thinkingModels.delete(runtimeModelId);
           this.nonThinkingModels.add(runtimeModelId);
-          this.outputChannel.debug?.(`[Ollama] Retrying without thinking support for ${runtimeModelId}`);
+          this.outputChannel.debug?.(`[client] retrying without thinking support for ${runtimeModelId}`);
           try {
             response = await perRequestClient.chat({
               model: runtimeModelId,
@@ -551,7 +551,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
               (this.isThinkingInternalServerError(retryError) || this.isToolsNotSupportedError(retryError))
             ) {
               this.outputChannel.warn(
-                `[Ollama] Cloud model ${runtimeModelId} failed with tools after think retry; retrying without tools`,
+                `[client] cloud model ${runtimeModelId} failed with tools after think retry; retrying without tools`,
               );
               response = await perRequestClient.chat({
                 model: runtimeModelId,
@@ -563,7 +563,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             }
           }
         } else if (isCloudModel && tools && this.isThinkingInternalServerError(innerError)) {
-          this.outputChannel.warn(`[Ollama] Cloud model ${runtimeModelId} failed with tools; retrying without tools`);
+          this.outputChannel.warn(`[client] cloud model ${runtimeModelId} failed with tools; retrying without tools`);
           response = await perRequestClient.chat({
             model: runtimeModelId,
             messages: ollamaMessages,
@@ -571,7 +571,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             ...(shouldThink ? { think: true } : {}),
           });
         } else if (tools && this.isToolsNotSupportedError(innerError)) {
-          this.outputChannel.warn(`[Ollama] Model ${runtimeModelId} rejected tools; retrying without tools`);
+          this.outputChannel.warn(`[client] model ${runtimeModelId} rejected tools; retrying without tools`);
           response = await perRequestClient.chat({
             model: runtimeModelId,
             messages: ollamaMessages,
@@ -610,7 +610,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             contentStarted = true;
             emittedOutput = true;
           }
-          this.outputChannel.debug?.(`[Ollama] Streaming chunk: ${chunk.message.content.substring(0, 50)}`);
+          this.outputChannel.debug?.(`[client] streaming chunk: ${chunk.message.content.substring(0, 50)}`);
           // Do not apply XML-like formatting per chunk: tags may span chunks.
           progress.report(new LanguageModelTextPart(chunk.message.content));
           emittedOutput = true;
@@ -650,7 +650,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       // streaming and emit any returned content.
       if (!emittedOutput && !token.isCancellationRequested) {
         this.outputChannel.debug?.(
-          `[Ollama] Stream returned no output for ${runtimeModelId}; retrying with stream=false`,
+          `[client] stream returned no output for ${runtimeModelId}; retrying with stream=false`,
         );
 
         const fallback = (await perRequestClient.chat({
@@ -678,16 +678,16 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
         if (!emittedOutput) {
           this.outputChannel.warn(
-            `[Ollama] Fallback non-stream response also returned no content for model ${runtimeModelId}`,
+            `[client] fallback non-stream response also returned no content for model ${runtimeModelId}`,
           );
         }
       }
     } catch (error) {
-      this.outputChannel.exception('[Ollama] Chat response failed', error);
+      this.outputChannel.exception('[client] chat response failed', error);
 
       if (isCloudModel && this.isThinkingInternalServerError(error) && !token.isCancellationRequested) {
         this.outputChannel.warn(
-          `[Ollama] Cloud model ${runtimeModelId} returned generic 500 after streaming retries; attempting non-stream rescue`,
+          `[client] cloud model ${runtimeModelId} returned generic 500 after streaming retries; attempting non-stream rescue`,
         );
 
         const rescueBaseMessages = (ollamaMessages ?? []) as Message[];
@@ -733,7 +733,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
               rescued.message?.content || rescued.message?.thinking || rescued.message?.tool_calls?.length;
             if (hasContent) {
               this.outputChannel.info(
-                `[Ollama] Cloud non-stream rescue (${attempt.label}) succeeded for ${runtimeModelId}`,
+                `[client] cloud non-stream rescue (${attempt.label}) succeeded for ${runtimeModelId}`,
               );
 
               if (rescued.message?.thinking) {
@@ -769,7 +769,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             }
           } catch (rescueError) {
             this.outputChannel.warn(
-              `[Ollama] Cloud non-stream rescue (${attempt.label}) failed for ${runtimeModelId}: ${String(rescueError)}`,
+              `[client] cloud non-stream rescue (${attempt.label}) failed for ${runtimeModelId}: ${String(rescueError)}`,
             );
           }
         }
@@ -931,7 +931,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
     if (strippedImageCount > 0) {
       this.outputChannel.debug?.(
-        `[Ollama] Stripped ${strippedImageCount} image(s) from messages (model does not support vision)`,
+        `[client] stripped ${strippedImageCount} image(s) from messages (model does not support vision)`,
       );
     }
 

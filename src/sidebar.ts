@@ -307,6 +307,128 @@ async function fetchModelPagePreview(
   }
 }
 
+const MODEL_PREVIEW_CACHE_TTL_MS = 30 * 60 * 1000;
+const MODEL_PREVIEW_CACHE_MAX_ENTRIES = 1000;
+const MODEL_PREVIEW_CACHE_STORAGE_KEY = 'ollama.modelPreviewCache.v1';
+
+type ModelPagePreview = Awaited<ReturnType<typeof fetchModelPagePreview>>;
+
+const modelPreviewCache = new Map<string, { value: ModelPagePreview; expiresAt: number }>();
+const modelPreviewInFlight = new Map<string, Promise<ModelPagePreview>>();
+let modelPreviewCacheContext: ExtensionContext | undefined;
+let modelPreviewCachePersistTimer: NodeJS.Timeout | null = null;
+
+function hydrateModelPreviewCacheFromStorage(context: ExtensionContext): void {
+  modelPreviewCacheContext = context;
+
+  const stored = context.globalState.get<{
+    entries: Array<{ key: string; value: ModelPagePreview; expiresAt: number }>;
+  }>(MODEL_PREVIEW_CACHE_STORAGE_KEY);
+
+  if (!stored?.entries?.length) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const entry of stored.entries) {
+    if (!entry?.key || !entry.value || typeof entry.expiresAt !== 'number' || entry.expiresAt <= now) {
+      continue;
+    }
+    modelPreviewCache.set(entry.key, { value: entry.value, expiresAt: entry.expiresAt });
+  }
+  pruneModelPreviewCache(now);
+}
+
+function schedulePersistModelPreviewCache(): void {
+  if (!modelPreviewCacheContext) {
+    return;
+  }
+
+  if (modelPreviewCachePersistTimer) {
+    clearTimeout(modelPreviewCachePersistTimer);
+  }
+
+  modelPreviewCachePersistTimer = setTimeout(() => {
+    const entries = [...modelPreviewCache.entries()].map(([key, entry]) => ({
+      key,
+      value: entry.value,
+      expiresAt: entry.expiresAt,
+    }));
+    void modelPreviewCacheContext?.globalState.update(MODEL_PREVIEW_CACHE_STORAGE_KEY, { entries });
+    modelPreviewCachePersistTimer = null;
+  }, 250);
+}
+
+export type ModelPreviewCacheSnapshot = {
+  entries: number;
+  inFlight: number;
+  maxEntries: number;
+  ttlMs: number;
+};
+
+export function getModelPreviewCacheSnapshot(): ModelPreviewCacheSnapshot {
+  return {
+    entries: modelPreviewCache.size,
+    inFlight: modelPreviewInFlight.size,
+    maxEntries: MODEL_PREVIEW_CACHE_MAX_ENTRIES,
+    ttlMs: MODEL_PREVIEW_CACHE_TTL_MS,
+  };
+}
+
+function pruneModelPreviewCache(now: number): void {
+  for (const [key, entry] of modelPreviewCache.entries()) {
+    if (entry.expiresAt <= now) {
+      modelPreviewCache.delete(key);
+    }
+  }
+
+  if (modelPreviewCache.size <= MODEL_PREVIEW_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const sortedByExpiry = [...modelPreviewCache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const overflow = modelPreviewCache.size - MODEL_PREVIEW_CACHE_MAX_ENTRIES;
+  for (let i = 0; i < overflow; i++) {
+    const key = sortedByExpiry[i]?.[0];
+    if (key) {
+      modelPreviewCache.delete(key);
+    }
+  }
+}
+
+async function getCachedModelPagePreview(modelName: string, timeoutMs = 8000): Promise<ModelPagePreview> {
+  const cacheKey = modelName.toLowerCase();
+  const now = Date.now();
+
+  const cached = modelPreviewCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const inFlight = modelPreviewInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = fetchModelPagePreview(modelName, timeoutMs)
+    .then(preview => {
+      const updatedNow = Date.now();
+      modelPreviewCache.set(cacheKey, {
+        value: preview,
+        expiresAt: updatedNow + MODEL_PREVIEW_CACHE_TTL_MS,
+      });
+      pruneModelPreviewCache(updatedNow);
+      schedulePersistModelPreviewCache();
+      return preview;
+    })
+    .finally(() => {
+      modelPreviewInFlight.delete(cacheKey);
+    });
+
+  modelPreviewInFlight.set(cacheKey, request);
+  return request;
+}
+
 /**
  * Local models view provider (installed + running state)
  */
@@ -321,6 +443,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private localModelCapabilitiesCache = new Map<string, ModelCapabilities>();
   private localModelCapabilitiesInFlight = new Set<string>();
   private cachedLocalModelNames = new Set<string>();
+  private static readonly LOCAL_CAPABILITIES_STORAGE_KEY = 'ollama.localModelCapabilities.v1';
 
   constructor(
     private client: Ollama,
@@ -328,7 +451,38 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     private logChannel?: DiagnosticsLogger,
     private onLocalModelsChanged?: () => void,
   ) {
+    this.hydrateLocalCapabilitiesFromStorage();
     this.startAutoRefresh();
+  }
+
+  private hydrateLocalCapabilitiesFromStorage(): void {
+    if (!this.context?.globalState) {
+      return;
+    }
+
+    const stored = this.context.globalState.get<Record<string, ModelCapabilities>>(
+      LocalModelsProvider.LOCAL_CAPABILITIES_STORAGE_KEY,
+    );
+    if (!stored) {
+      return;
+    }
+
+    for (const [modelName, capabilities] of Object.entries(stored)) {
+      this.localModelCapabilitiesCache.set(modelName, capabilities);
+    }
+  }
+
+  private persistLocalCapabilitiesToStorage(): void {
+    if (!this.context?.globalState) {
+      return;
+    }
+
+    const serialized: Record<string, ModelCapabilities> = {};
+    for (const [modelName, capabilities] of this.localModelCapabilitiesCache.entries()) {
+      serialized[modelName] = capabilities;
+    }
+
+    void this.context.globalState.update(LocalModelsProvider.LOCAL_CAPABILITIES_STORAGE_KEY, serialized);
   }
 
   /**
@@ -408,7 +562,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
   private async getLocalModels(): Promise<ModelTreeItem[]> {
     try {
-      this.logChannel?.debug('[Ollama] Loading local models via list() and ps()...');
+      this.logChannel?.debug('[client] loading local models via list() and ps()...');
       const [listResponse, psResponse] = await Promise.all([this.client.list(), this.client.ps()]);
 
       const runningMap = new Map<string, RunningProcessInfo>();
@@ -444,7 +598,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           // Set initial tooltip
           item.tooltip = buildLocalModelTooltip(model.name, model.size, running);
           // Fetch tooltip description asynchronously
-          void fetchModelPagePreview(model.name).then(
+          void getCachedModelPagePreview(model.name).then(
             preview => {
               item.tooltip = buildLocalModelTooltip(model.name, model.size, running, preview.description);
               this.treeChangeEmitter.fire(item);
@@ -480,6 +634,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
             void fetchModelCapabilities(this.client, model.name)
               .then(caps => {
                 this.localModelCapabilitiesCache.set(model.name, caps);
+                this.persistLocalCapabilitiesToStorage();
                 appendBadges(caps);
                 this.treeChangeEmitter.fire(item);
               })
@@ -498,13 +653,13 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         });
 
       this.logChannel?.info(
-        `[Ollama] Local models loaded: ${items.length} total, ${items.filter(m => m.type === 'local-running').length} running`,
+        `[client] local models loaded: ${items.length} total, ${items.filter(m => m.type === 'local-running').length} running`,
       );
 
       this.cachedLocalModelNames = new Set(visibleLocalModels.map(m => m.name));
       return items.length > 0 ? items : [makeStatusItem('No local models found')];
     } catch (error) {
-      this.logChannel?.exception('[Ollama] Failed to load local models', error);
+      this.logChannel?.exception('[client] failed to load local models', error);
       return [makeStatusItem('Failed to load local models')];
     }
   }
@@ -513,7 +668,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    * Refresh the tree (manual refresh button - forces immediate refresh)
    */
   refresh(): void {
-    this.logChannel?.debug('[Ollama] Manual refresh triggered');
+    this.logChannel?.debug('[client] manual refresh triggered');
     this.treeChangeEmitter.fire(null);
     this.onLocalModelsChanged?.();
   }
@@ -525,6 +680,18 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     return new Set(this.cachedLocalModelNames);
   }
 
+  getProfilingSnapshot(): {
+    capabilityCacheEntries: number;
+    capabilityInFlight: number;
+    cachedLocalNames: number;
+  } {
+    return {
+      capabilityCacheEntries: this.localModelCapabilitiesCache.size,
+      capabilityInFlight: this.localModelCapabilitiesInFlight.size,
+      cachedLocalNames: this.cachedLocalModelNames.size,
+    };
+  }
+
   /**
    * Start auto-refresh timer for local models
    */
@@ -533,7 +700,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
     // Auto-refresh local/running models
     if (localRefreshSecs > 0) {
-      this.logChannel?.debug(`[Ollama] Auto-refresh set for local models every ${localRefreshSecs}s`);
+      this.logChannel?.debug(`[client] auto-refresh set for local models every ${localRefreshSecs}s`);
       const localInterval = setInterval(() => {
         this.refresh();
       }, localRefreshSecs * 1000);
@@ -543,7 +710,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     // Watch for settings changes and restart intervals
     workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('ollama.localModelRefreshInterval')) {
-        this.logChannel?.debug('[Ollama] Ollama settings changed, restarting auto-refresh');
+        this.logChannel?.debug('[client] ollama settings changed, restarting auto-refresh');
         this.stopAutoRefresh();
         this.startAutoRefresh();
       }
@@ -572,13 +739,13 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    */
   async deleteModel(modelName: string): Promise<void> {
     try {
-      this.logChannel?.debug(`[Ollama] Deleting model: ${modelName}`);
+      this.logChannel?.debug(`[client] deleting model: ${modelName}`);
       await this.client.delete({ model: modelName });
-      this.logChannel?.info(`[Ollama] Model deleted: ${modelName}`);
+      this.logChannel?.info(`[client] model deleted: ${modelName}`);
       this.refresh();
       window.showInformationMessage(`Model ${modelName} deleted`);
     } catch (error) {
-      this.logChannel?.exception(`[Ollama] Failed to delete model ${modelName}`, error);
+      this.logChannel?.exception(`[client] failed to delete model ${modelName}`, error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       window.showErrorMessage(`Failed to delete model: ${msg}`);
     }
@@ -589,13 +756,13 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    */
   async startModel(modelName: string): Promise<void> {
     try {
-      this.logChannel?.debug(`[Ollama] Starting local model: ${modelName}`);
+      this.logChannel?.debug(`[client] starting local model: ${modelName}`);
       await window.withProgress({ location: 15, title: `Starting ${modelName}...` }, async () => {
         const isCloudModel = this.isCloudTaggedModel(modelName);
         const activeClient = isCloudModel && this.context ? await getCloudOllamaClient(this.context) : this.client;
         if (isCloudModel) {
           // Cloud models should be pulled first (same behavior as `ollama run`).
-          this.logChannel?.info(`[Ollama] Pulling cloud model before start: ${modelName}`);
+          this.logChannel?.info(`[client] pulling cloud model before start: ${modelName}`);
           await activeClient.pull({ model: modelName, stream: false });
         }
         await activeClient.generate({ model: modelName, prompt: '', stream: false, keep_alive: '10m' });
@@ -609,11 +776,11 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         }
 
         if (running) {
-          this.logChannel?.info(`[Ollama] Model started: ${modelName}`);
+          this.logChannel?.info(`[client] model started: ${modelName}`);
         } else if (isCloudModel) {
-          this.logChannel?.info(`[Ollama] Cloud model warmed but not persistent in /api/ps: ${modelName}`);
+          this.logChannel?.info(`[client] cloud model warmed but not persistent in /api/ps: ${modelName}`);
         } else {
-          this.logChannel?.warn(`[Ollama] Model warm-up completed but not shown as running: ${modelName}`);
+          this.logChannel?.warn(`[client] model warm-up completed but not shown as running: ${modelName}`);
         }
 
         this.refresh();
@@ -628,7 +795,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         }
       });
     } catch (error) {
-      this.logChannel?.exception(`[Ollama] Failed to start model ${modelName}`, error);
+      this.logChannel?.exception(`[client] failed to start model ${modelName}`, error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       window.showErrorMessage(`Failed to start model: ${msg}`);
     }
@@ -644,7 +811,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    */
   async stopModel(modelName: string): Promise<void> {
     try {
-      this.logChannel?.debug(`[Ollama] Stopping model: ${modelName}`);
+      this.logChannel?.debug(`[client] stopping model: ${modelName}`);
       await window.withProgress(
         { location: ProgressLocation.Notification, title: `Stopping ${modelName}…`, cancellable: false },
         async () => {
@@ -663,11 +830,11 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           }
         },
       );
-      this.logChannel?.info(`[Ollama] Model stopped: ${modelName}`);
+      this.logChannel?.info(`[client] model stopped: ${modelName}`);
       this.refresh();
       window.showInformationMessage(`Model ${modelName} stopped`);
     } catch (error) {
-      this.logChannel?.exception(`[Ollama] Failed to stop model ${modelName}`, error);
+      this.logChannel?.exception(`[client] failed to stop model ${modelName}`, error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       window.showErrorMessage(`Failed to stop model: ${msg}`);
     }
@@ -698,9 +865,19 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   /** Base model names that are available in Ollama Cloud catalog. */
   private cloudCatalogNames = new Set<string>();
   private localProvider?: LocalModelsProvider;
+  private context?: ExtensionContext;
+
+  private static readonly CACHE_STORAGE_KEY = 'ollama.libraryModelsCache.v1';
+
+  private static readonly CACHE_VERSION = 1;
 
   constructor(private logChannel?: DiagnosticsLogger) {
     this.startAutoRefresh();
+  }
+
+  attachContext(context: ExtensionContext): void {
+    this.context = context;
+    this.hydrateCacheFromStorage();
   }
 
   setLocalProvider(provider: LocalModelsProvider): void {
@@ -847,6 +1024,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
     this.variantsCache.clear();
     this.cloudCatalogNames.clear();
     this.cacheGeneration++;
+    void this.context?.globalState.update(LibraryModelsProvider.CACHE_STORAGE_KEY, undefined);
     this.treeChangeEmitter.fire(null);
   }
 
@@ -857,6 +1035,20 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
    */
   refreshVariantStates(): void {
     this.treeChangeEmitter.fire(null);
+  }
+
+  getProfilingSnapshot(): {
+    modelCacheEntries: number;
+    variantCacheFamilies: number;
+    cloudCatalogNames: number;
+    hasLoadPromise: boolean;
+  } {
+    return {
+      modelCacheEntries: this.cache.length,
+      variantCacheFamilies: this.variantsCache.size,
+      cloudCatalogNames: this.cloudCatalogNames.size,
+      hasLoadPromise: this.loadPromise !== null,
+    };
   }
 
   private materializeVariants(raw: VariantRaw[], localNames: Set<string>): ModelTreeItem[] {
@@ -877,7 +1069,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       item.tooltip = isCloudVariant ? `🤖 ${name}\n☁️ Cloud` : `🤖 ${name}`;
 
       // Fetch description/capabilities asynchronously for leaf variants.
-      void fetchModelPagePreview(name).then(
+      void getCachedModelPagePreview(name).then(
         preview => {
           const badges: string[] = [];
           if (isCloudVariant) badges.push('☁️');
@@ -921,8 +1113,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   }
 
   private async getLibraryModels(): Promise<ModelTreeItem[]> {
-    const cacheTtlMs = 10 * 60 * 1000;
-    if (this.cache.length > 0 && Date.now() - this.cacheTimeMs < cacheTtlMs) {
+    if (this.cache.length > 0) {
       return this.buildItems(this.cache);
     }
 
@@ -940,11 +1131,12 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
         if (this.cacheGeneration === gen) {
           this.cache = names;
           this.cacheTimeMs = Date.now();
+          this.persistCacheToStorage();
         }
         return names;
       })
       .catch(error => {
-        this.logChannel?.exception('[Ollama] Library fetch failed', error);
+        this.logChannel?.exception('[client] library fetch failed', error);
         return [];
       })
       .finally(() => {
@@ -959,8 +1151,42 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
     return this.buildItems(names);
   }
 
+  private hydrateCacheFromStorage(): void {
+    const stored = this.context?.globalState.get<{
+      version: number;
+      names: string[];
+      cloudNames: string[];
+      cachedAtMs: number;
+    }>(LibraryModelsProvider.CACHE_STORAGE_KEY);
+
+    if (!stored) {
+      return;
+    }
+
+    if (stored.version !== LibraryModelsProvider.CACHE_VERSION) {
+      return;
+    }
+
+    if (!Array.isArray(stored.names) || stored.names.length === 0) {
+      return;
+    }
+
+    this.cache = [...new Set(stored.names.filter(Boolean))];
+    this.cloudCatalogNames = new Set((stored.cloudNames ?? []).filter(Boolean).map(name => name.toLowerCase()));
+    this.cacheTimeMs = typeof stored.cachedAtMs === 'number' ? stored.cachedAtMs : Date.now();
+  }
+
+  private persistCacheToStorage(): void {
+    void this.context?.globalState.update(LibraryModelsProvider.CACHE_STORAGE_KEY, {
+      version: LibraryModelsProvider.CACHE_VERSION,
+      names: this.cache,
+      cloudNames: [...this.cloudCatalogNames],
+      cachedAtMs: this.cacheTimeMs,
+    });
+  }
+
   private async fetchLibraryModelNames(timeoutMs: number): Promise<string[]> {
-    this.logChannel?.debug(`[Ollama] Fetching remote model library from ollama.com (timeout=${timeoutMs}ms)`);
+    this.logChannel?.debug(`[client] fetching remote model library from ollama.com (timeout=${timeoutMs}ms)`);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1026,7 +1252,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       }
 
       const limitedNames = mergedNames.slice(0, 200);
-      this.logChannel?.info(`[Ollama] Library loaded with ${limitedNames.length} models`);
+      this.logChannel?.info(`[client] library loaded with ${limitedNames.length} models`);
       return limitedNames;
     } finally {
       clearTimeout(timeout);
@@ -1044,7 +1270,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       }
       item.tooltip = isCloudCatalogModel ? `Library model: ${name}\n☁️ Cloud` : `Library model: ${name}`;
       // Fetch description and capabilities asynchronously
-      void fetchModelPagePreview(name).then(
+      void getCachedModelPagePreview(name).then(
         preview => {
           const tooltipLines = [`🤖 ${name}`];
           if (isCloudCatalogModel) {
@@ -1124,7 +1350,7 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
 
       return variantNames.map(name => ({ name, size: sizeMap.get(name) }));
     } catch (error) {
-      this.logChannel?.exception('[Ollama] Failed to fetch model variants', error);
+      this.logChannel?.exception('[client] failed to fetch model variants', error);
       return null;
     } finally {
       clearTimeout(timeout);
@@ -1132,23 +1358,9 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
   }
 
   private startAutoRefresh(): void {
-    const libraryRefreshSecs = workspace.getConfiguration('ollama').get<number>('libraryRefreshInterval') || 21600;
-    if (libraryRefreshSecs > 0) {
-      const timer = setInterval(() => {
-        this.refresh();
-      }, libraryRefreshSecs * 1000);
-      this.refreshIntervals.push(timer);
-    }
-
-    workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('ollama.libraryRefreshInterval')) {
-        for (const interval of this.refreshIntervals) {
-          clearInterval(interval);
-        }
-        this.refreshIntervals = [];
-        this.startAutoRefresh();
-      }
-    });
+    // Intentionally no periodic auto-refresh for library metadata.
+    // Library cache refreshes only on extension startup (initial fetch or hydrated storage)
+    // and explicit manual refresh command.
   }
 }
 
@@ -1169,11 +1381,17 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   private cachedNames = new Set<string>();
   private warmedModelNames = new Set<string>();
   private warmedModelResolvedNames = new Map<string, string>();
+  private catalogModelNames: string[] = [];
+  private cloudCapabilitiesByBase = new Map<string, Set<string>>();
+
+  private static readonly CLOUD_CATALOG_STORAGE_KEY = 'ollama.cloudCatalogCache.v1';
+  private static readonly CLOUD_CATALOG_CACHE_VERSION = 1;
 
   constructor(
     private context: ExtensionContext,
     private logChannel?: DiagnosticsLogger,
   ) {
+    this.hydrateCloudCatalogFromStorage();
     this.startAutoRefresh();
   }
 
@@ -1251,11 +1469,32 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   refresh(): void {
     this.cache = [];
     this.cacheTimeMs = 0;
+    this.catalogModelNames = [];
+    this.cloudCapabilitiesByBase.clear();
+    void this.context.globalState?.update(CloudModelsProvider.CLOUD_CATALOG_STORAGE_KEY, undefined);
     this.treeChangeEmitter.fire(null);
   }
 
   getCachedModelNames(): Set<string> {
     return new Set(this.cachedNames);
+  }
+
+  getProfilingSnapshot(): {
+    cachedItems: number;
+    cachedNames: number;
+    warmedModels: number;
+    catalogModelNames: number;
+    capabilitiesByBase: number;
+    hasLoadPromise: boolean;
+  } {
+    return {
+      cachedItems: this.cache.length,
+      cachedNames: this.cachedNames.size,
+      warmedModels: this.warmedModelNames.size,
+      catalogModelNames: this.catalogModelNames.length,
+      capabilitiesByBase: this.cloudCapabilitiesByBase.size,
+      hasLoadPromise: this.loadPromise !== null,
+    };
   }
 
   markModelWarm(modelName: string, resolvedName?: string): void {
@@ -1362,8 +1601,8 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   }
 
   private async getCloudModels(): Promise<ModelTreeItem[]> {
-    const cacheTtlMs = 5 * 60 * 1000;
-    if (this.cache.length > 0 && Date.now() - this.cacheTimeMs < cacheTtlMs) {
+    const runningInfoRefreshMs = 15 * 1000;
+    if (this.cache.length > 0 && Date.now() - this.cacheTimeMs < runningInfoRefreshMs) {
       return this.cache;
     }
 
@@ -1371,15 +1610,15 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       return this.loadPromise;
     }
 
-    this.loadPromise = this.fetchCloudModels(12000)
+    this.loadPromise = this.fetchCloudModels()
       .then(items => {
         this.cache = items;
         this.cacheTimeMs = Date.now();
-        this.cachedNames = new Set(items.map(item => item.label));
+        this.cachedNames = new Set(items.filter(item => item.type !== 'status').map(item => item.label));
         return items;
       })
       .catch(error => {
-        this.logChannel?.exception('[Ollama] Cloud models fetch failed', error);
+        this.logChannel?.exception('[client] cloud models fetch failed', error);
         return [makeStatusActionItem('Login to Ollama Cloud', 'ollama-copilot.loginCloud')];
       })
       .finally(() => {
@@ -1389,18 +1628,59 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     return this.loadPromise;
   }
 
-  private async fetchCloudModels(timeoutMs: number): Promise<ModelTreeItem[]> {
-    this.logChannel?.debug(`[Ollama] Fetching cloud models (timeout=${timeoutMs}ms)`);
+  private async fetchCloudModels(): Promise<ModelTreeItem[]> {
+    let runningModels = new Map<string, { durationMs?: number; size?: number }>();
+    try {
+      runningModels = await this.fetchCloudRunningModels(8000);
+    } catch (error) {
+      this.logChannel?.exception('[client] failed to refresh cloud running status', error);
+    }
+
+    if (this.catalogModelNames.length === 0) {
+      await this.loadCloudCatalogFromNetwork(12000);
+    }
+
+    if (this.catalogModelNames.length === 0) {
+      return [makeStatusActionItem('Login to Ollama Cloud', 'ollama-copilot.loginCloud')];
+    }
+
+    const items = this.buildCloudItemsFromCatalog(runningModels);
+    this.logChannel?.info(
+      `[client] cloud models loaded: ${items.length} total, ${items.filter(m => m.type === 'cloud-running').length} running`,
+    );
+    return items.length > 0 ? items : [makeStatusItem('No cloud models found')];
+  }
+
+  private async fetchCloudRunningModels(
+    timeoutMs: number,
+  ): Promise<Map<string, { durationMs?: number; size?: number }>> {
+    const cloudClient = await getCloudOllamaClient(this.context);
+    const psResponse = await cloudClient.ps();
+
+    const runningModels = new Map<string, { durationMs?: number; size?: number }>();
+    for (const model of psResponse.models ?? []) {
+      if (!this.isCloudTaggedModel(model.name)) {
+        continue;
+      }
+
+      const baseName = model.name.split(':')[0];
+      const durationMs = model.expires_at ? Math.max(0, new Date(model.expires_at).getTime() - Date.now()) : undefined;
+      runningModels.set(baseName, { durationMs, size: model.size });
+    }
+
+    // keep timeout parameter intentionally for parity with other fetchers
+    void timeoutMs;
+    return runningModels;
+  }
+
+  private async loadCloudCatalogFromNetwork(timeoutMs: number): Promise<void> {
+    this.logChannel?.debug(`[client] fetching cloud model catalog (timeout=${timeoutMs}ms)`);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const cloudClient = await getCloudOllamaClient(this.context);
-
-      // Fetch running status and cloud catalog concurrently to minimize latency.
-      const [psResponse, tagsResponse, libraryResponse] = await Promise.all([
-        cloudClient.ps(),
+      const [tagsResponse, libraryResponse] = await Promise.all([
         fetch('https://ollama.com/api/tags', {
           method: 'GET',
           signal: controller.signal,
@@ -1411,20 +1691,6 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         }),
       ]);
 
-      // Build map of running models
-      const runningModels = new Map<string, { durationMs?: number; size?: number }>();
-      for (const model of psResponse.models ?? []) {
-        if (!this.isCloudTaggedModel(model.name)) {
-          continue;
-        }
-        const baseName = model.name.split(':')[0];
-        const durationMs = model.expires_at
-          ? Math.max(0, new Date(model.expires_at).getTime() - Date.now())
-          : undefined;
-        runningModels.set(baseName, { durationMs, size: model.size });
-      }
-
-      // Primary source of available cloud models: /api/tags
       const cloudModelNames: string[] = [];
       if (tagsResponse.ok && typeof tagsResponse.json === 'function') {
         const payload = (await tagsResponse.json()) as { models?: Array<{ name?: string }> };
@@ -1435,8 +1701,6 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         }
       }
 
-      // Build a map of capabilities per model from the cloud catalog HTML.
-      // Each model card contains capability labels like "Tools", "Vision", etc.
       const cloudCapabilities = new Map<string, Set<string>>();
       if (libraryResponse.ok) {
         const html = await libraryResponse.text();
@@ -1444,14 +1708,16 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         for (const block of html.matchAll(capBlockRe)) {
           const name = typeof block[1] === 'string' ? decodeURIComponent(block[1]).trim() : '';
           if (!name) continue;
+
+          const key = name.toLowerCase();
           const caps = new Set<string>();
           const blockText = block[0];
           if (/\bTools\b/i.test(blockText)) caps.add('tools');
           if (/\bVision\b/i.test(blockText)) caps.add('vision');
           if (/\bThinking\b/i.test(blockText)) caps.add('thinking');
           if (/\bEmbedding\b/i.test(blockText)) caps.add('embedding');
-          cloudCapabilities.set(name, caps);
-          // Fallback name source when /api/tags is unavailable.
+          cloudCapabilities.set(key, caps);
+
           if (cloudModelNames.length === 0) {
             cloudModelNames.push(name);
           }
@@ -1459,84 +1725,113 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       }
 
       const uniqueCloudModelNames = [...new Set(cloudModelNames)].sort((a, b) => a.localeCompare(b));
-      if (uniqueCloudModelNames.length === 0) {
-        return [makeStatusActionItem('Login to Ollama Cloud', 'ollama-copilot.loginCloud')];
-      }
-
-      const items = uniqueCloudModelNames
-        .map(fullName => {
-          const baseName = fullName.split(':')[0];
-          const runningInfo = runningModels.get(baseName);
-          const isRunning =
-            (typeof runningInfo?.durationMs === 'number' && runningInfo.durationMs > 0) ||
-            this.warmedModelNames.has(baseName);
-          const item = new ModelTreeItem(
-            fullName,
-            isRunning ? 'cloud-running' : 'cloud-stopped',
-            runningInfo?.size,
-            runningInfo?.durationMs,
-          );
-          // Add capability emoji badges
-          const caps = cloudCapabilities.get(baseName);
-          const isThinking = caps?.has('thinking') || isThinkingModelId(fullName);
-          const hasTools = caps?.has('tools') ?? false;
-          const hasVision = caps?.has('vision') ?? false;
-          const hasEmbedding = caps?.has('embedding') ?? false;
-
-          const badges: string[] = [];
-          if (isThinking) badges.push('🧠');
-          if (hasTools) badges.push('🛠️');
-          if (hasVision) badges.push('👁️');
-          if (hasEmbedding) badges.push('🧩');
-          if (badges.length > 0) {
-            const existing = (item.description ?? '').toString();
-            const badgeStr = badges.join(' ');
-            item.description = existing ? `${existing} ${badgeStr}` : badgeStr;
-          }
-
-          // Build expanded tooltip (matches local model format)
-          const sizeText = formatSizeForTooltip(runningInfo?.size);
-          const tooltipLines = [`🤖 ${fullName}`, `🏋️ ${sizeText}`];
-          if (isRunning) {
-            const until = formatRelativeFromNow(runningInfo?.durationMs);
-            tooltipLines.push(`⏱️ ${until}`);
-          }
-          const capLines = buildCapabilityLines({
-            thinking: isThinking,
-            tools: hasTools,
-            vision: hasVision,
-            embedding: hasEmbedding,
-          });
-          if (capLines.length > 0) {
-            tooltipLines.push(...capLines);
-          }
-          item.tooltip = tooltipLines.join('\n');
-
-          // Fetch description asynchronously and append beneath details
-          void fetchModelPagePreview(fullName).then(
-            preview => {
-              if (preview.description) {
-                item.tooltip = `${item.tooltip}\n${preview.description}`;
-                this.treeChangeEmitter.fire(item);
-              }
-            },
-            () => {
-              /* keep existing tooltip */
-            },
-          );
-
-          return item;
-        })
-        .sort((a, b) => a.label.localeCompare(b.label));
-
-      this.logChannel?.info(
-        `[Ollama] Cloud models loaded: ${items.length} total, ${items.filter(m => m.type === 'cloud-running').length} running`,
-      );
-
-      return items.length > 0 ? items : [makeStatusItem('No cloud models found')];
+      this.catalogModelNames = uniqueCloudModelNames;
+      this.cloudCapabilitiesByBase = cloudCapabilities;
+      this.persistCloudCatalogToStorage();
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private buildCloudItemsFromCatalog(
+    runningModels: Map<string, { durationMs?: number; size?: number }>,
+  ): ModelTreeItem[] {
+    return this.catalogModelNames
+      .map(fullName => {
+        const baseName = fullName.split(':')[0];
+        const runningInfo = runningModels.get(baseName);
+        const isRunning =
+          (typeof runningInfo?.durationMs === 'number' && runningInfo.durationMs > 0) ||
+          this.warmedModelNames.has(baseName);
+        const item = new ModelTreeItem(
+          fullName,
+          isRunning ? 'cloud-running' : 'cloud-stopped',
+          runningInfo?.size,
+          runningInfo?.durationMs,
+        );
+
+        const caps = this.cloudCapabilitiesByBase.get(baseName.toLowerCase());
+        const isThinking = caps?.has('thinking') || isThinkingModelId(fullName);
+        const hasTools = caps?.has('tools') ?? false;
+        const hasVision = caps?.has('vision') ?? false;
+        const hasEmbedding = caps?.has('embedding') ?? false;
+
+        const badges: string[] = [];
+        if (isThinking) badges.push('🧠');
+        if (hasTools) badges.push('🛠️');
+        if (hasVision) badges.push('👁️');
+        if (hasEmbedding) badges.push('🧩');
+        if (badges.length > 0) {
+          const existing = (item.description ?? '').toString();
+          const badgeStr = badges.join(' ');
+          item.description = existing ? `${existing} ${badgeStr}` : badgeStr;
+        }
+
+        const sizeText = formatSizeForTooltip(runningInfo?.size);
+        const tooltipLines = [`🤖 ${fullName}`, `🏋️ ${sizeText}`];
+        if (isRunning) {
+          const until = formatRelativeFromNow(runningInfo?.durationMs);
+          tooltipLines.push(`⏱️ ${until}`);
+        }
+        const capLines = buildCapabilityLines({
+          thinking: isThinking,
+          tools: hasTools,
+          vision: hasVision,
+          embedding: hasEmbedding,
+        });
+        if (capLines.length > 0) {
+          tooltipLines.push(...capLines);
+        }
+        item.tooltip = tooltipLines.join('\n');
+
+        void getCachedModelPagePreview(fullName).then(
+          preview => {
+            if (preview.description) {
+              item.tooltip = `${item.tooltip}\n${preview.description}`;
+              this.treeChangeEmitter.fire(item);
+            }
+          },
+          () => {
+            /* keep existing tooltip */
+          },
+        );
+
+        return item;
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  private hydrateCloudCatalogFromStorage(): void {
+    const stored = this.context.globalState?.get<{
+      version: number;
+      names: string[];
+      capabilitiesByBase: Record<string, string[]>;
+    }>(CloudModelsProvider.CLOUD_CATALOG_STORAGE_KEY);
+
+    if (!stored || stored.version !== CloudModelsProvider.CLOUD_CATALOG_CACHE_VERSION) {
+      return;
+    }
+
+    this.catalogModelNames = Array.isArray(stored.names) ? [...new Set(stored.names.filter(Boolean))] : [];
+    this.cloudCapabilitiesByBase.clear();
+    if (stored.capabilitiesByBase && typeof stored.capabilitiesByBase === 'object') {
+      for (const [baseName, caps] of Object.entries(stored.capabilitiesByBase)) {
+        this.cloudCapabilitiesByBase.set(baseName, new Set((caps ?? []).filter(Boolean)));
+      }
+    }
+  }
+
+  private persistCloudCatalogToStorage(): void {
+    const capabilitiesByBase: Record<string, string[]> = {};
+    for (const [baseName, caps] of this.cloudCapabilitiesByBase.entries()) {
+      capabilitiesByBase[baseName] = [...caps];
+    }
+
+    void this.context.globalState?.update(CloudModelsProvider.CLOUD_CATALOG_STORAGE_KEY, {
+      version: CloudModelsProvider.CLOUD_CATALOG_CACHE_VERSION,
+      names: this.catalogModelNames,
+      capabilitiesByBase,
+    });
   }
 
   private isCloudTaggedModel(modelName: string): boolean {
@@ -1545,23 +1840,9 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   }
 
   private startAutoRefresh(): void {
-    const cloudRefreshSecs = workspace.getConfiguration('ollama').get<number>('libraryRefreshInterval') || 21600;
-    if (cloudRefreshSecs > 0) {
-      const timer = setInterval(() => {
-        this.refresh();
-      }, cloudRefreshSecs * 1000);
-      this.refreshIntervals.push(timer);
-    }
-
-    workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('ollama.libraryRefreshInterval')) {
-        for (const interval of this.refreshIntervals) {
-          clearInterval(interval);
-        }
-        this.refreshIntervals = [];
-        this.startAutoRefresh();
-      }
-    });
+    // Intentionally no periodic auto-refresh.
+    // Cloud catalog is persisted and refreshed only on startup (if cache is empty)
+    // or explicit manual refresh. Running state is refreshed lazily by getCloudModels().
   }
 }
 
@@ -1686,7 +1967,7 @@ async function pullModelWithProgress(
           }
         }
 
-        logChannel?.info(`[Ollama] Model pulled successfully: ${modelName}`);
+        logChannel?.info(`[client] model pulled successfully: ${modelName}`);
         localProvider.refresh();
         window.showInformationMessage(`Model ${modelName} pulled successfully`);
       } catch (error) {
@@ -1694,7 +1975,7 @@ async function pullModelWithProgress(
           window.showInformationMessage(`Download of ${modelName} cancelled`);
           return;
         }
-        logChannel?.exception?.(`[Ollama] Failed to pull model ${modelName}`, error);
+        logChannel?.exception?.(`[client] failed to pull model ${modelName}`, error);
         const msg = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to pull model: ${msg}`);
       }
@@ -1796,6 +2077,17 @@ export async function handleStopCloudModel(
   }
 }
 
+export type SidebarProfilingSnapshot = {
+  local: ReturnType<LocalModelsProvider['getProfilingSnapshot']>;
+  library: ReturnType<LibraryModelsProvider['getProfilingSnapshot']>;
+  cloud: ReturnType<CloudModelsProvider['getProfilingSnapshot']>;
+  preview: ModelPreviewCacheSnapshot;
+};
+
+export type SidebarRegistration = {
+  getProfilingSnapshot: () => SidebarProfilingSnapshot;
+};
+
 /**
  * Register sidebar with VS Code
  */
@@ -1804,7 +2096,9 @@ export function registerSidebar(
   client: Ollama,
   logChannel?: DiagnosticsLogger,
   onLocalModelsChanged?: () => void,
-): void {
+): SidebarRegistration {
+  hydrateModelPreviewCacheFromStorage(context);
+
   let libraryProvider: LibraryModelsProvider | undefined;
   const localProvider = new LocalModelsProvider(client, context, logChannel, () => {
     onLocalModelsChanged?.();
@@ -1812,9 +2106,10 @@ export function registerSidebar(
   });
   const cloudProvider = new CloudModelsProvider(context, logChannel);
   libraryProvider = new LibraryModelsProvider(logChannel);
+  libraryProvider.attachContext(context);
   libraryProvider.setLocalProvider(localProvider);
 
-  logChannel?.info('[Ollama] Sidebar providers initialized');
+  logChannel?.info('[client] sidebar providers initialized');
 
   const localTreeView = window.createTreeView('ollama-local-models', { treeDataProvider: localProvider });
   const libraryTreeView = window.createTreeView('ollama-library-models', { treeDataProvider: libraryProvider });
@@ -1952,4 +2247,13 @@ export function registerSidebar(
     { dispose: () => libraryProvider.dispose() },
     { dispose: () => cloudProvider.dispose() },
   );
+
+  return {
+    getProfilingSnapshot: () => ({
+      local: localProvider.getProfilingSnapshot(),
+      library: libraryProvider.getProfilingSnapshot(),
+      cloud: cloudProvider.getProfilingSnapshot(),
+      preview: getModelPreviewCacheSnapshot(),
+    }),
+  };
 }
