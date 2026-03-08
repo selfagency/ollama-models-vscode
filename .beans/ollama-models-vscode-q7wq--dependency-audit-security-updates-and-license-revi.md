@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-q7wq
 title: 'Dependency audit: security, updates, and license review'
-status: todo
+status: completed
 type: task
 priority: high
 created_at: 2026-03-08T16:41:06Z
-updated_at: 2026-03-08T16:41:06Z
+updated_at: 2026-03-08T16:54:38Z
 ---
 
 Run a full dependency security audit, update outdated packages, and verify dependency licenses to reduce supply-chain risk.

@@ -2358,3 +2358,114 @@ describe('startLogStreaming inner callbacks', () => {
     fakeProcess.emit('exit', 0, null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// deactivate
+// ---------------------------------------------------------------------------
+
+describe('deactivate', () => {
+  it('exports deactivate and it does not throw', async () => {
+    const ext = await import('./extension.js');
+    expect(typeof ext.deactivate).toBe('function');
+    expect(() => ext.deactivate()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleConnectionTestFailure — Open Logs path
+// ---------------------------------------------------------------------------
+
+describe('handleConnectionTestFailure Open Logs path', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('opens log file when Open Logs is selected and file exists', async () => {
+    const openTextDocument = vi.fn().mockResolvedValue({ uri: { fsPath: '/fake/server.log' } });
+    const showTextDocument = vi.fn().mockResolvedValue(undefined);
+    const showWarningMessage = vi.fn();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class { constructor(public label: string) {} },
+      TreeItemCollapsibleState: { None: 0 },
+      EventEmitter: class { event = {}; fire = vi.fn(); },
+      Uri: { file: vi.fn((p: string) => ({ fsPath: p })), joinPath: vi.fn() },
+      workspace: {
+        openTextDocument,
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      window: {
+        showTextDocument,
+        showWarningMessage,
+        showErrorMessage: vi.fn(),
+        createOutputChannel: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), show: vi.fn() })),
+      },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+      lm: { registerLanguageModelChatProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      languages: { registerInlineCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      ProgressLocation: { Notification: 15 },
+      LanguageModelChatMessage: { User: vi.fn(), Assistant: vi.fn() },
+      LanguageModelTextPart: class { constructor(public value: string) {} },
+      ChatResponseMarkdownPart: class { value: any = {}; },
+      InlineCompletionItem: class { constructor(public readonly insertText: string) {} },
+      CancellationToken: class {},
+    }));
+
+    const showErrorMessage = vi.fn().mockResolvedValue('Open Logs');
+    const ext = await import('./extension.js');
+    await ext.handleConnectionTestFailure('http://localhost:11434', { showErrorMessage }, { executeCommand: vi.fn() });
+
+    // openTextDocument should be called with the platform-specific log path
+    expect(openTextDocument).toHaveBeenCalled();
+    expect(showTextDocument).toHaveBeenCalled();
+  });
+
+  it('shows warning when openTextDocument throws', async () => {
+    const openTextDocument = vi.fn().mockRejectedValue(new Error('file not found'));
+    const showWarningMessage = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class { constructor(public label: string) {} },
+      TreeItemCollapsibleState: { None: 0 },
+      EventEmitter: class { event = {}; fire = vi.fn(); },
+      Uri: { file: vi.fn((p: string) => ({ fsPath: p })), joinPath: vi.fn() },
+      workspace: {
+        openTextDocument,
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      window: {
+        showTextDocument: vi.fn(),
+        showWarningMessage,
+        showErrorMessage: vi.fn(),
+        createOutputChannel: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), show: vi.fn() })),
+      },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+      lm: { registerLanguageModelChatProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      languages: { registerInlineCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      ProgressLocation: { Notification: 15 },
+      LanguageModelChatMessage: { User: vi.fn(), Assistant: vi.fn() },
+      LanguageModelTextPart: class { constructor(public value: string) {} },
+      ChatResponseMarkdownPart: class { value: any = {}; },
+      InlineCompletionItem: class { constructor(public readonly insertText: string) {} },
+      CancellationToken: class {},
+    }));
+
+    const showErrorMessage = vi.fn().mockResolvedValue('Open Logs');
+    const ext = await import('./extension.js');
+
+    // On macOS, getOllamaServerLogPath returns a path. On Linux it returns null.
+    // For the "file open throws" case, we only execute this on macOS.
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      await ext.handleConnectionTestFailure('http://localhost:11434', { showErrorMessage }, { executeCommand: vi.fn() });
+      expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Could not open Ollama logs'));
+    }
+  });
+});

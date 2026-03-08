@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-lql3
 title: Validate HTTP response Content-Type in sidebar fetch calls
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-03-08T16:40:40Z
-updated_at: 2026-03-08T16:40:40Z
+updated_at: 2026-03-08T17:06:23Z
 ---
 
 Harden the four `fetch()` call sites in `src/sidebar.ts` against malformed or unexpected server responses by validating the `Content-Type` header before attempting JSON parsing.
