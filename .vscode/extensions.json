@@ -1,5 +1,6 @@
 {
   "recommendations": [
+    "selfagency.opilot",
     "selfagency.beans-vscode",
     "oxc.oxc-vscode",
     "vitest.explorer",
