@@ -1,7 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Ollama, type ChatResponse, type Message, type ShowResponse } from 'ollama';
-import { formatXmlLikeResponseForDisplay } from './formatting';
 import {
   CancellationToken,
   EventEmitter,
@@ -23,6 +22,7 @@ import {
 } from 'vscode';
 import { getCloudOllamaClient, getContextLengthOverride, getOllamaClient } from './client';
 import type { DiagnosticsLogger } from './diagnostics.js';
+import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
 
 const MODEL_LIST_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MODEL_INFO_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -586,6 +586,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       let thinkingStarted = false;
       let contentStarted = false;
       let emittedOutput = false;
+      const xmlFilter = createXmlStreamFilter();
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -611,9 +612,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             emittedOutput = true;
           }
           this.outputChannel.debug?.(`[client] streaming chunk: ${chunk.message.content.substring(0, 50)}`);
-          // Do not apply XML-like formatting per chunk: tags may span chunks.
-          progress.report(new LanguageModelTextPart(chunk.message.content));
-          emittedOutput = true;
+          // Filter context tags using SAX parser - handles incomplete tags across chunk boundaries
+          const cleanContent = xmlFilter.write(chunk.message.content);
+          if (cleanContent) {
+            progress.report(new LanguageModelTextPart(cleanContent));
+            emittedOutput = true;
+          }
         }
 
         // Handle tool calls
@@ -642,6 +646,13 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         if (chunk.done === true) {
           break;
         }
+      }
+
+      // Finalize XML filter to flush any remaining buffer
+      const finalContent = xmlFilter.end();
+      if (finalContent) {
+        progress.report(new LanguageModelTextPart(finalContent));
+        emittedOutput = true;
       }
 
       // Some model/server combinations can return a successful stream that emits

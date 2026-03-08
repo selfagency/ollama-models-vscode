@@ -1,3 +1,8 @@
+import { exec } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { Ollama } from 'ollama';
 import {
   commands,
@@ -18,6 +23,8 @@ import {
 import { fetchModelCapabilities, getCloudOllamaClient, type ModelCapabilities } from './client.js';
 import type { DiagnosticsLogger } from './diagnostics.js';
 import { isThinkingModelId } from './provider.js';
+
+const execAsync = promisify(exec);
 
 /**
  * Tree item representing a pane or model in the sidebar
@@ -168,6 +175,28 @@ function groupModelsByFamily(models: ModelTreeItem[]): Map<string, ModelTreeItem
   return groups;
 }
 
+/**
+ * Aggregate capabilities from all child models in a family
+ */
+function aggregateFamilyCapabilities(familyModels: ModelTreeItem[]): {
+  thinking: boolean;
+  tools: boolean;
+  vision: boolean;
+  embedding: boolean;
+} {
+  const caps = { thinking: false, tools: false, vision: false, embedding: false };
+
+  for (const model of familyModels) {
+    const desc = (model.description ?? '').toString();
+    if (desc.includes('🧠')) caps.thinking = true;
+    if (desc.includes('🛠️')) caps.tools = true;
+    if (desc.includes('👁️')) caps.vision = true;
+    if (desc.includes('🧩')) caps.embedding = true;
+  }
+
+  return caps;
+}
+
 function makeStatusItem(label: string): ModelTreeItem {
   return new ModelTreeItem(label, 'status');
 }
@@ -185,6 +214,8 @@ type RunningProcessInfo = {
   id?: string;
   durationMs?: number;
   processor?: string;
+  size?: number;
+  sizeVram?: number;
 };
 
 function formatRelativeFromNow(ms?: number): string {
@@ -224,12 +255,61 @@ function buildLocalModelTooltip(
   size?: number,
   running?: RunningProcessInfo,
   description?: string,
+  capabilities?: { thinking?: boolean; toolCalling?: boolean; imageInput?: boolean; embedding?: boolean },
 ): string {
   const id = running?.id ?? '—';
-  const processor = running?.processor ?? (running ? 'Active' : 'Not running');
   const until = formatRelativeFromNow(running?.durationMs);
   const sizeText = formatSizeForTooltip(size);
-  const lines = [`🤖 ${modelName}`, `🆔 ${id}`, `🏋️ ${sizeText}`, `⚙️ ${processor}`, `⏱️ ${until}`];
+
+  const lines = [`🤖 ${modelName}`, `🆔 ${id}`, `🏋️ ${sizeText}`];
+
+  // Add memory breakdown for running models
+  if (running) {
+    const totalSize = running.size ?? size ?? 0;
+    const vramSize = running.sizeVram ?? 0;
+    const ramSize = totalSize - vramSize;
+
+    if (vramSize > 0 && ramSize > 0) {
+      const ramGB = (ramSize / 1024 ** 3).toFixed(1);
+      const vramGB = (vramSize / 1024 ** 3).toFixed(1);
+      lines.push(`🧮 RAM: ${ramGB}GB | VRAM: ${vramGB}GB`);
+    } else if (totalSize > 0) {
+      const totalGB = (totalSize / 1024 ** 3).toFixed(1);
+      lines.push(`🧮 RAM: ${totalGB}GB`);
+    }
+
+    // Add processor allocation
+    if (running.processor) {
+      const procMatch = running.processor.match(/(\d+)% GPU/);
+      if (procMatch) {
+        const gpuPct = parseInt(procMatch[1], 10);
+        const cpuPct = 100 - gpuPct;
+        if (cpuPct > 0 && gpuPct > 0) {
+          lines.push(`💻 CPU: ${cpuPct}% | GPU: ${gpuPct}%`);
+        } else if (gpuPct === 100) {
+          lines.push(`💻 GPU: 100%`);
+        }
+      } else if (running.processor === 'CPU') {
+        lines.push(`💻 CPU: 100%`);
+      }
+    }
+  } else {
+    lines.push(`⚙️ Not running`);
+  }
+
+  lines.push(`⏱️ ${until}`);
+
+  if (capabilities) {
+    const capLine = buildCapabilityLines({
+      thinking: capabilities.thinking,
+      tools: capabilities.toolCalling,
+      vision: capabilities.imageInput,
+      embedding: capabilities.embedding,
+    });
+    if (capLine) {
+      lines.push(capLine);
+    }
+  }
   if (description) lines.push(description);
   return lines.join('\n');
 }
@@ -239,13 +319,13 @@ function buildCapabilityLines(caps: {
   tools?: boolean;
   vision?: boolean;
   embedding?: boolean;
-}): string[] {
-  const lines: string[] = [];
-  if (caps.thinking) lines.push('🧠 Thinking');
-  if (caps.tools) lines.push('🛠️ Tools');
-  if (caps.vision) lines.push('👁️ Vision');
-  if (caps.embedding) lines.push('🧩 Embedding');
-  return lines;
+}): string {
+  const badges: string[] = [];
+  if (caps.thinking) badges.push('🧠 Thinking');
+  if (caps.tools) badges.push('🛠️ Tools');
+  if (caps.vision) badges.push('👁️ Vision');
+  if (caps.embedding) badges.push('🧩 Embedding');
+  return badges.join(' | ');
 }
 
 function getLibraryModelUrl(modelName: string): string {
@@ -536,7 +616,26 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       const result: ModelTreeItem[] = [];
       for (const [familyName, familyModels] of filteredEntries) {
         const groupItem = new ModelTreeItem(familyName, 'model-group');
-        groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
+        const familyCaps = aggregateFamilyCapabilities(familyModels);
+        const capLine = buildCapabilityLines({
+          thinking: familyCaps.thinking,
+          tools: familyCaps.tools,
+          vision: familyCaps.vision,
+          embedding: familyCaps.embedding,
+        });
+
+        const badges: string[] = [];
+        if (familyCaps.thinking) badges.push('🧠');
+        if (familyCaps.tools) badges.push('🛠️');
+        if (familyCaps.vision) badges.push('👁️');
+        if (familyCaps.embedding) badges.push('🧩');
+        if (badges.length > 0) {
+          groupItem.description = badges.join(' ');
+        }
+
+        const tooltipLines = [`${familyName} family (${familyModels.length} models)`];
+        if (capLine) tooltipLines.push(capLine);
+        groupItem.tooltip = tooltipLines.join('\n');
         result.push(groupItem);
       }
       return result;
@@ -581,7 +680,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           processor = gpuPct > 0 ? `${gpuPct}% GPU` : 'CPU';
         }
 
-        runningMap.set(model.name, { durationMs, id, processor });
+        runningMap.set(model.name, { durationMs, id, processor, size, sizeVram });
       }
 
       const visibleLocalModels = listResponse.models.filter(model => !this.isCloudTaggedModel(model.name));
@@ -628,6 +727,17 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           const cachedCaps = this.localModelCapabilitiesCache.get(model.name);
           if (cachedCaps) {
             appendBadges(cachedCaps);
+            // Update tooltip with capabilities
+            void getCachedModelPagePreview(model.name).then(
+              preview => {
+                item.tooltip = buildLocalModelTooltip(model.name, model.size, running, preview.description, cachedCaps);
+                this.treeChangeEmitter.fire(item);
+              },
+              () => {
+                item.tooltip = buildLocalModelTooltip(model.name, model.size, running, undefined, cachedCaps);
+                this.treeChangeEmitter.fire(item);
+              },
+            );
           } else if (!this.localModelCapabilitiesInFlight.has(model.name)) {
             this.localModelCapabilitiesInFlight.add(model.name);
             // Fetch capabilities once per local model name.
@@ -636,7 +746,17 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
                 this.localModelCapabilitiesCache.set(model.name, caps);
                 this.persistLocalCapabilitiesToStorage();
                 appendBadges(caps);
-                this.treeChangeEmitter.fire(item);
+                // Update tooltip with capabilities
+                void getCachedModelPagePreview(model.name).then(
+                  preview => {
+                    item.tooltip = buildLocalModelTooltip(model.name, model.size, running, preview.description, caps);
+                    this.treeChangeEmitter.fire(item);
+                  },
+                  () => {
+                    item.tooltip = buildLocalModelTooltip(model.name, model.size, running, undefined, caps);
+                    this.treeChangeEmitter.fire(item);
+                  },
+                );
               })
               .catch(() => {
                 // Silently skip badges on error
@@ -807,15 +927,89 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   }
 
   /**
+   * Extract the PID for a running model from Ollama server logs
+   */
+  private async extractModelPidFromLogs(modelName: string): Promise<number | null> {
+    try {
+      const platform = process.platform;
+      let logContent: string;
+
+      if (platform === 'darwin') {
+        const logPath = join(homedir(), '.ollama', 'logs', 'server.log');
+        logContent = await readFile(logPath, 'utf-8');
+      } else if (platform === 'win32') {
+        const logPath = join(process.env['LOCALAPPDATA'] ?? '', 'Ollama', 'server.log');
+        logContent = await readFile(logPath, 'utf-8');
+      } else if (platform === 'linux') {
+        // On Linux, use journalctl to get recent logs
+        const { stdout } = await execAsync('journalctl -u ollama -n 1000 --no-pager --output=cat');
+        logContent = stdout;
+      } else {
+        this.logChannel?.warn(`[client] PID extraction not supported on platform: ${platform}`);
+        return null;
+      }
+
+      // Parse log lines looking for runner.name matching our model and extract runner.pid
+      // Example: runner.name=registry.ollama.ai/library/qwen3:0.6b ... runner.pid=64475
+      const lines = logContent.split('\n').reverse(); // Start from most recent
+      const modelBase = modelName.split(':')[0];
+
+      for (const line of lines) {
+        if (line.includes('runner.name=') && line.includes(modelBase) && line.includes('runner.pid=')) {
+          const pidMatch = line.match(/runner\.pid=(\d+)/);
+          if (pidMatch) {
+            const pid = Number.parseInt(pidMatch[1], 10);
+            this.logChannel?.debug(`[client] extracted PID ${pid} for model ${modelName}`);
+            return pid;
+          }
+        }
+      }
+
+      this.logChannel?.debug(`[client] no PID found in logs for model ${modelName}`);
+      return null;
+    } catch (error) {
+      this.logChannel?.exception(`[client] failed to extract PID for ${modelName}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Force-kill a model process by PID
+   */
+  private async forceKillProcess(pid: number): Promise<boolean> {
+    try {
+      const platform = process.platform;
+      let command: string;
+
+      if (platform === 'win32') {
+        command = `taskkill /F /PID ${pid}`;
+      } else {
+        command = `kill -9 ${pid}`;
+      }
+
+      this.logChannel?.info(`[client] force-killing process ${pid}`);
+      await execAsync(command);
+      return true;
+    } catch (error) {
+      this.logChannel?.exception(`[client] failed to kill process ${pid}`, error);
+      return false;
+    }
+  }
+
+  /**
    * Stop a running model and show a progress indicator until it is fully unloaded
    */
   async stopModel(modelName: string): Promise<void> {
     try {
+      // Skip force-kill logic for cloud models (they don't have local PIDs)
+      const isCloudModel = this.isCloudTaggedModel(modelName);
+
       this.logChannel?.debug(`[client] stopping model: ${modelName}`);
+      let modelStillRunning = false;
+
       await window.withProgress(
         { location: ProgressLocation.Notification, title: `Stopping ${modelName}…`, cancellable: false },
         async () => {
-          const isCloudModel = this.isCloudTaggedModel(modelName);
           const activeClient = isCloudModel && this.context ? await getCloudOllamaClient(this.context) : this.client;
           await activeClient.generate({ model: modelName, prompt: '', stream: false, keep_alive: 0 });
           // Poll until the model disappears from the running process list (max 30 s)
@@ -823,13 +1017,67 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
             await new Promise<void>(resolve => setTimeout(resolve, 1000));
             try {
               const { models } = await this.client.ps();
-              if (!models.some(m => m.name === modelName)) break;
+              if (!models.some(m => m.name === modelName)) {
+                return; // Model stopped successfully
+              }
             } catch {
-              break; // ps() failed — assume model is gone
+              return; // ps() failed — assume model is gone
             }
           }
+          // If we reach here, model is still running after 30s
+          modelStillRunning = true;
         },
       );
+
+      // Check if model is still running after timeout
+      if (modelStillRunning && !isCloudModel) {
+        this.logChannel?.warn(`[client] model ${modelName} still running after 30s timeout`);
+
+        // Try to extract the PID from logs
+        const pid = await this.extractModelPidFromLogs(modelName);
+
+        if (pid !== null) {
+          // Offer to force-kill the process
+          const answer = await window.showWarningMessage(
+            `Model ${modelName} did not stop after 30 seconds. Force kill the process (PID ${pid})?`,
+            'Force Kill',
+            'Cancel',
+          );
+
+          if (answer === 'Force Kill') {
+            const killed = await this.forceKillProcess(pid);
+            if (killed) {
+              // Wait a moment and verify
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              try {
+                const { models } = await this.client.ps();
+                if (!models.some(m => m.name === modelName)) {
+                  this.logChannel?.info(`[client] model force-killed successfully: ${modelName}`);
+                  this.refresh();
+                  window.showInformationMessage(`Model ${modelName} force-killed`);
+                  return;
+                }
+              } catch {
+                // ps() failed, assume success
+                this.logChannel?.info(`[client] model force-killed (ps check failed): ${modelName}`);
+                this.refresh();
+                window.showInformationMessage(`Model ${modelName} force-killed`);
+                return;
+              }
+              window.showErrorMessage(`Failed to verify model ${modelName} was killed. Check Ollama logs.`);
+            } else {
+              window.showErrorMessage(`Failed to kill process ${pid}. Try restarting Ollama or kill manually.`);
+            }
+          }
+        } else {
+          // No PID found, show generic message
+          window.showWarningMessage(
+            `Model ${modelName} did not stop after 30 seconds. Try restarting the Ollama server.`,
+          );
+        }
+        return;
+      }
+
       this.logChannel?.info(`[client] model stopped: ${modelName}`);
       this.refresh();
       window.showInformationMessage(`Model ${modelName} stopped`);
@@ -958,30 +1206,63 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       return models;
     }
 
-    // Flat mode: return all library models sorted A-Z (non-collapsible)
+    // Flat mode: return all library models with their variants sorted A-Z
     if (!this.grouped) {
       const filterLower = this.filterText.toLowerCase();
       const localNames = this.getLocalModelNames();
-      return models
-        .filter(
-          m =>
-            m.type !== 'status' &&
-            (!filterLower ||
-              m.label.toLowerCase().includes(filterLower) ||
-              (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))),
-        )
-        .map(m => {
-          m.collapsibleState = TreeItemCollapsibleState.None;
-          // Show check icon for installed models
+      const allItems: ModelTreeItem[] = [];
+
+      // Expand all parent models to include their variants
+      for (const model of models) {
+        if (model.type === 'status') {
+          allItems.push(model);
+          continue;
+        }
+
+        // Add parent model
+        if (
+          !filterLower ||
+          model.label.toLowerCase().includes(filterLower) ||
+          (typeof model.tooltip === 'string' && model.tooltip.toLowerCase().includes(filterLower))
+        ) {
+          model.collapsibleState = TreeItemCollapsibleState.None;
           const isInstalled = Array.from(localNames).some(
-            local => local === m.label || local.startsWith(`${m.label}:`),
+            local => local === model.label || local.startsWith(`${model.label}:`),
           );
           if (isInstalled) {
-            m.iconPath = createThemeIcon('check');
+            model.iconPath = createThemeIcon('check');
           }
-          return m;
-        })
-        .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+          allItems.push(model);
+        }
+
+        // Fetch and add variants
+        const cachedVariants = this.variantsCache.get(model.label);
+        if (cachedVariants) {
+          const variants = this.materializeVariants(cachedVariants, localNames);
+          const filteredVariants = variants.filter(
+            v =>
+              !filterLower ||
+              v.label.toLowerCase().includes(filterLower) ||
+              (typeof v.tooltip === 'string' && v.tooltip.toLowerCase().includes(filterLower)),
+          );
+          allItems.push(...filteredVariants);
+        } else {
+          // Fetch variants asynchronously
+          void this.fetchModelVariants(model.label).then(
+            raw => {
+              if (raw) {
+                this.variantsCache.set(model.label, raw);
+                this.treeChangeEmitter.fire(null); // Refresh to show new variants
+              }
+            },
+            () => {
+              // Silently skip on error
+            },
+          );
+        }
+      }
+
+      return allItems.sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
     }
 
     // Group models by family
@@ -1010,7 +1291,26 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
         result.push(familyModels[0]);
       } else {
         const groupItem = new ModelTreeItem(familyName, 'model-group');
-        groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
+        const familyCaps = aggregateFamilyCapabilities(familyModels);
+        const capLine = buildCapabilityLines({
+          thinking: familyCaps.thinking,
+          tools: familyCaps.tools,
+          vision: familyCaps.vision,
+          embedding: familyCaps.embedding,
+        });
+
+        const badges: string[] = [];
+        if (familyCaps.thinking) badges.push('🧠');
+        if (familyCaps.tools) badges.push('🛠️');
+        if (familyCaps.vision) badges.push('👁️');
+        if (familyCaps.embedding) badges.push('🧩');
+        if (badges.length > 0) {
+          groupItem.description = badges.join(' ');
+        }
+
+        const tooltipLines = [`${familyName} family (${familyModels.length} models)`];
+        if (capLine) tooltipLines.push(capLine);
+        groupItem.tooltip = tooltipLines.join('\n');
         result.push(groupItem);
       }
     }
@@ -1088,7 +1388,8 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
 
           const tooltipLines = [`🤖 ${name}`];
           if (isCloudVariant) tooltipLines.push('☁️ Cloud');
-          tooltipLines.push(...buildCapabilityLines(preview.capabilities));
+          const capLine = buildCapabilityLines(preview.capabilities);
+          if (capLine) tooltipLines.push(capLine);
           if (preview.description) tooltipLines.push(preview.description);
           item.tooltip = tooltipLines.join('\n');
           this.treeChangeEmitter.fire(item);
@@ -1276,9 +1577,9 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
           if (isCloudCatalogModel) {
             tooltipLines.push('☁️ Cloud');
           }
-          const capLines = buildCapabilityLines(preview.capabilities);
-          if (capLines.length > 0) {
-            tooltipLines.push(...capLines);
+          const capLine = buildCapabilityLines(preview.capabilities);
+          if (capLine) {
+            tooltipLines.push(capLine);
           }
           if (preview.description) tooltipLines.push(preview.description);
 
@@ -1449,7 +1750,26 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       const result: ModelTreeItem[] = [];
       for (const [familyName, familyModels] of filteredEntries) {
         const groupItem = new ModelTreeItem(familyName, 'model-group');
-        groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
+        const familyCaps = aggregateFamilyCapabilities(familyModels);
+        const capLine = buildCapabilityLines({
+          thinking: familyCaps.thinking,
+          tools: familyCaps.tools,
+          vision: familyCaps.vision,
+          embedding: familyCaps.embedding,
+        });
+
+        const badges: string[] = [];
+        if (familyCaps.thinking) badges.push('🧠');
+        if (familyCaps.tools) badges.push('🛠️');
+        if (familyCaps.vision) badges.push('👁️');
+        if (familyCaps.embedding) badges.push('🧩');
+        if (badges.length > 0) {
+          groupItem.description = badges.join(' ');
+        }
+
+        const tooltipLines = [`${familyName} family (${familyModels.length} models)`];
+        if (capLine) tooltipLines.push(capLine);
+        groupItem.tooltip = tooltipLines.join('\n');
         result.push(groupItem);
       }
       return result;
@@ -1773,14 +2093,14 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           const until = formatRelativeFromNow(runningInfo?.durationMs);
           tooltipLines.push(`⏱️ ${until}`);
         }
-        const capLines = buildCapabilityLines({
+        const capLine = buildCapabilityLines({
           thinking: isThinking,
           tools: hasTools,
           vision: hasVision,
           embedding: hasEmbedding,
         });
-        if (capLines.length > 0) {
-          tooltipLines.push(...capLines);
+        if (capLine) {
+          tooltipLines.push(capLine);
         }
         item.tooltip = tooltipLines.join('\n');
 

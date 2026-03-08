@@ -3,11 +3,11 @@ import { promises as fsPromises } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ChatResponse, Message, Ollama, Tool } from 'ollama';
-import { formatXmlLikeResponseForDisplay } from './formatting';
 import * as vscode from 'vscode';
 import { getCloudOllamaClient, getOllamaClient, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
+import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
@@ -540,6 +540,7 @@ export async function handleChatRequest(
 
       let thinkingStarted = false;
       let contentStarted = false;
+      const xmlFilter = createXmlStreamFilter();
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -560,8 +561,11 @@ export async function handleChatRequest(
             contentStarted = true;
           }
           outputChannel?.debug(`[client] @ollama chunk: ${chunk.message.content.substring(0, 50)}`);
-          // Do not apply XML-like formatting per chunk: tags may span chunks.
-          stream.markdown(chunk.message.content);
+          // Filter context tags using SAX parser - handles incomplete tags across chunk boundaries
+          const cleanContent = xmlFilter.write(chunk.message.content);
+          if (cleanContent) {
+            stream.markdown(cleanContent);
+          }
         }
 
         if (chunk.message?.tool_calls?.length) {
@@ -575,6 +579,12 @@ export async function handleChatRequest(
         if (chunk.done) {
           break;
         }
+      }
+
+      // Finalize XML filter to flush any remaining buffer
+      const finalContent = xmlFilter.end();
+      if (finalContent) {
+        stream.markdown(finalContent);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
