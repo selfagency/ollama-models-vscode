@@ -58,7 +58,7 @@ The auth token is stored in [VS Code's encrypted secret store](https://code.visu
    ollama pull llama3.2:3b
    ```
 2. Click the **Refresh** button in the Local Models panel
-3. Check the **Ollama for Copilot** output channel for error messages
+3. Check the **Opilot** output channel for error messages
 
 ### Models disappear after VS Code restart
 
@@ -96,7 +96,7 @@ Or use the **Library** panel → right-click → **Pull Model**.
 
 Some reasoning-capable models (DeepSeek R1, QwQ, etc.) output `<think>...</think>` blocks. The extension strips these before displaying the response. If you see raw XML-like tags, check that your model name is being recognized as a thinking model:
 
-- Open the output channel: **View → Output → Ollama for Copilot**
+- Open the output channel: **View → Output → Opilot**
 - Look for `Stripping thinking block` log lines
 
 If not present, the model name may not match the thinking model pattern. Report it as an issue on GitHub.
@@ -129,7 +129,7 @@ Larger models (7B+) will have noticeable latency even on capable hardware.
 
 ### "Build failed"
 
-- Open the **Ollama for Copilot** output channel for the raw error from `ollama create`
+- Open the **Opilot** output channel for the raw error from `ollama create`
 - Check your Modelfile syntax: the `FROM` instruction is required
 - Ensure the base model is installed: `ollama pull <base-model>`
 - Model names must be lowercase alphanumeric with hyphens only
@@ -166,7 +166,7 @@ Local model performance depends entirely on hardware. Large models (13B+) requir
 
 ### Opening the output channel
 
-**View → Output** → dropdown → **Ollama for Copilot**
+**View → Output** → dropdown → **Opilot**
 
 Or run Command Palette → **"Ollama: Dump Performance Snapshot"** to see timing data.
 
@@ -180,7 +180,7 @@ Set `ollama.diagnostics.logLevel` to `"debug"` for maximum verbosity.
 
 ## Still Having Problems?
 
-1. Check existing issues: [github.com/selfagency/ollama-copilot/issues](https://github.com/selfagency/ollama-copilot/issues)
+1. Check existing issues: [github.com/selfagency/opilot/issues](https://github.com/selfagency/opilot/issues)
 2. Open the output channel and copy the relevant log lines
 3. File a new issue with:
    - OS and VS Code version

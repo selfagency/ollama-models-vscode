@@ -241,3 +241,6 @@ $RECYCLE.BIN/
 
 *.vsix
 test-report.junit.xml
+.gh-pages
+package-lock.json
+**/cache

@@ -189,14 +189,14 @@ jobs:
 
       - name: Package extension
         run: |
-          pnpm dlx @vscode/vsce package --no-dependencies --out ollama-copilot.vsix
+          pnpm dlx @vscode/vsce package --no-dependencies --out opilot.vsix
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.detect-tag.outputs.release_tag }}
           body_path: release-notes.md
-          files: 'ollama-copilot.vsix'
+          files: 'opilot.vsix'
           draft: false
           prerelease: false
         env:
@@ -224,7 +224,7 @@ jobs:
       - name: Publish to VS Code Marketplace
         id: publish_vsce
         if: "!contains(needs.detect-tag.outputs.release_tag, '-')"
-        run: pnpm dlx @vscode/vsce publish --packagePath ollama-copilot.vsix -p ${{ secrets.VSCE_PAT }}
+        run: pnpm dlx @vscode/vsce publish --packagePath opilot.vsix -p ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
@@ -241,7 +241,7 @@ jobs:
               deployment_id: ${{ steps.deploy_vsce.outputs.deployment_id }},
               state: outcome === 'success' ? 'success' : 'failure',
               description: `VS Code Marketplace publish ${outcome}`,
-              environment_url: 'https://marketplace.visualstudio.com/items?itemName=selfagency.ollama-copilot',
+              environment_url: 'https://marketplace.visualstudio.com/items?itemName=selfagency.opilot',
               auto_inactive: false,
             });
 
@@ -267,7 +267,7 @@ jobs:
       - name: Publish to Open VSX
         id: publish_ovsx
         if: "!contains(needs.detect-tag.outputs.release_tag, '-')"
-        run: pnpm dlx ovsx publish ollama-copilot.vsix -p ${{ secrets.OVSX_PAT }}
+        run: pnpm dlx ovsx publish opilot.vsix -p ${{ secrets.OVSX_PAT }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -284,6 +284,6 @@ jobs:
               deployment_id: ${{ steps.deploy_ovsx.outputs.deployment_id }},
               state: outcome === 'success' ? 'success' : 'failure',
               description: `Open VSX publish ${outcome}`,
-              environment_url: 'https://open-vsx.org/extension/selfagency/ollama-copilot',
+              environment_url: 'https://open-vsx.org/extension/selfagency/opilot',
               auto_inactive: false,
             });

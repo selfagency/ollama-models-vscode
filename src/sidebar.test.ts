@@ -2008,9 +2008,9 @@ describe('Extracted command handlers', () => {
     const registerCommandMock = vi.mocked(vscode.commands.registerCommand);
     const registeredIds = registerCommandMock.mock.calls.map(([id]) => id);
 
-    expect(registeredIds).toContain('ollama-copilot.collapseLocalModels');
-    expect(registeredIds).toContain('ollama-copilot.collapseCloudModels');
-    expect(registeredIds).toContain('ollama-copilot.collapseLibrary');
+    expect(registeredIds).toContain('opilot.collapseLocalModels');
+    expect(registeredIds).toContain('opilot.collapseCloudModels');
+    expect(registeredIds).toContain('opilot.collapseLibrary');
 
     // Invoke each collapse command handler and verify it delegates to the built-in VS Code command
     const executeCommandMock = vi.mocked(vscode.commands.executeCommand);
@@ -2019,13 +2019,13 @@ describe('Extracted command handlers', () => {
       return (entry?.[1] as (() => void) | undefined)?.();
     };
 
-    callHandler('ollama-copilot.collapseLocalModels');
+    callHandler('opilot.collapseLocalModels');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-local-models.collapseAll');
 
-    callHandler('ollama-copilot.collapseCloudModels');
+    callHandler('opilot.collapseCloudModels');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-cloud-models.collapseAll');
 
-    callHandler('ollama-copilot.collapseLibrary');
+    callHandler('opilot.collapseLibrary');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-library-models.collapseAll');
   });
 
@@ -2079,12 +2079,12 @@ describe('Extracted command handlers', () => {
 
     const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
     const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
-    expect(registeredIds).toContain('ollama-copilot.filterLocalModels');
-    expect(registeredIds).toContain('ollama-copilot.clearLocalFilter');
-    expect(registeredIds).toContain('ollama-copilot.filterCloudModels');
-    expect(registeredIds).toContain('ollama-copilot.clearCloudFilter');
-    expect(registeredIds).toContain('ollama-copilot.filterLibraryModels');
-    expect(registeredIds).toContain('ollama-copilot.clearLibraryFilter');
+    expect(registeredIds).toContain('opilot.filterLocalModels');
+    expect(registeredIds).toContain('opilot.clearLocalFilter');
+    expect(registeredIds).toContain('opilot.filterCloudModels');
+    expect(registeredIds).toContain('opilot.clearCloudFilter');
+    expect(registeredIds).toContain('opilot.filterLibraryModels');
+    expect(registeredIds).toContain('opilot.clearLibraryFilter');
   });
 });
 
@@ -2314,12 +2314,12 @@ describe('registerSidebar grouped/flat toggle commands', () => {
 
     const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
     const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
-    expect(registeredIds).toContain('ollama-copilot.toggleLocalGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleCloudGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleLibraryGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleLocalGroupingToTree');
-    expect(registeredIds).toContain('ollama-copilot.toggleCloudGroupingToTree');
-    expect(registeredIds).toContain('ollama-copilot.toggleLibraryGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleLocalGrouping');
+    expect(registeredIds).toContain('opilot.toggleCloudGrouping');
+    expect(registeredIds).toContain('opilot.toggleLibraryGrouping');
+    expect(registeredIds).toContain('opilot.toggleLocalGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleCloudGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleLibraryGroupingToTree');
   });
 });
 

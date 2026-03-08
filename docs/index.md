@@ -1,9 +1,9 @@
 ---
-title: Ollama for GitHub Copilot
+title: Opilot — Ollama for GitHub Copilot VS Code Extension
 ---
 
 <p align="center">
-  <img src="/logo.png" alt="Ollama for GitHub Copilot" width="128" height="128" />
+  <img src="/logo.png" alt="Opilot" width="128" height="128" />
 </p>
 
 <p align="center">
@@ -12,13 +12,13 @@ title: Ollama for GitHub Copilot
 
 <div style="display:flex;flex-direction:row;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;">
 
-[![Tests](https://github.com/selfagency/ollama-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/ollama-copilot/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/selfagency/ollama-copilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/ollama-copilot)
+[![Tests](https://github.com/selfagency/opilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/opilot/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/selfagency/opilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/opilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
 
-**Ollama for GitHub Copilot** integrates the full Ollama ecosystem — local models, cloud models, and the Ollama model library — directly into VS Code's Copilot Chat interface. Your conversations never leave your machine when using local models, and you can switch between models without leaving the editor.
+**Opilot** integrates the full Ollama ecosystem — local models, cloud models, and the Ollama model library — directly into VS Code's Copilot Chat interface. Your conversations never leave your machine when using local models, and you can switch between models without leaving the editor.
 
 ## Key Features
 
@@ -43,7 +43,7 @@ title: Ollama for GitHub Copilot
 ## Quick Start
 
 1. [Install Ollama](https://ollama.ai/download) and start it (`ollama serve` or open the app)
-2. Install **Ollama for GitHub Copilot** from the VS Code Marketplace
+2. Install **Opilot** from the VS Code Marketplace
 3. The Ollama icon appears in the activity bar — click it to open the sidebar
 4. Pull a model from the **Library** panel (e.g., `llama3.2:3b`)
 5. Open Copilot Chat, click the model picker, and select your Ollama model — or type `@ollama` to chat

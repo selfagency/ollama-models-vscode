@@ -2,11 +2,11 @@
 title: Contributing
 ---
 
-Thank you for contributing to **Ollama for GitHub Copilot**!
+Thank you for contributing to **Opilot**!
 
 ## Before You Start
 
-1. Search [existing issues](https://github.com/selfagency/ollama-copilot/issues) to see if your bug or feature is already tracked.
+1. Search [existing issues](https://github.com/selfagency/opilot/issues) to see if your bug or feature is already tracked.
 2. For significant changes, open an issue first to discuss the approach.
 3. Fork the repository and clone your fork.
 
@@ -143,7 +143,7 @@ Include:
 - Ollama version (`ollama --version`)
 - Steps to reproduce
 - Expected vs. actual behavior
-- Relevant output from **Ollama for Copilot** output channel (with `ollama.diagnostics.logLevel: "debug"`)
+- Relevant output from **Opilot** output channel (with `ollama.diagnostics.logLevel: "debug"`)
 
 ## Feature Requests
 

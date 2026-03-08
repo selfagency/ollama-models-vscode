@@ -429,7 +429,7 @@ export async function handleBuildModelfile(
         }
 
         log?.info(`[client] model built: ${modelName}`);
-        await vscode.commands.executeCommand('ollama-copilot.refreshLocalModels');
+        await vscode.commands.executeCommand('opilot.refreshLocalModels');
         vscode.window.showInformationMessage(`Model "${modelName}" built successfully`);
       } catch (error) {
         reportError(log, 'Failed to build model', error, { showToUser: true });
@@ -530,17 +530,15 @@ export function registerModelfileManager(
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('ollama-modelfiles', provider),
-    vscode.commands.registerCommand('ollama-copilot.refreshModelfiles', () => provider.refresh()),
-    vscode.commands.registerCommand('ollama-copilot.newModelfile', () =>
-      handleNewModelfile(provider.getFolderPath(), client),
-    ),
-    vscode.commands.registerCommand('ollama-copilot.editModelfile', (item: ModelfileItem) =>
+    vscode.commands.registerCommand('opilot.refreshModelfiles', () => provider.refresh()),
+    vscode.commands.registerCommand('opilot.newModelfile', () => handleNewModelfile(provider.getFolderPath(), client)),
+    vscode.commands.registerCommand('opilot.editModelfile', (item: ModelfileItem) =>
       vscode.commands.executeCommand('vscode.open', item.uri),
     ),
-    vscode.commands.registerCommand('ollama-copilot.buildModelfile', (item: ModelfileItem) =>
+    vscode.commands.registerCommand('opilot.buildModelfile', (item: ModelfileItem) =>
       handleBuildModelfile(item, client, log),
     ),
-    vscode.commands.registerCommand('ollama-copilot.openModelfilesFolder', async () =>
+    vscode.commands.registerCommand('opilot.openModelfilesFolder', async () =>
       handleOpenModelfilesFolder(provider.getFolderPath(), log),
     ),
     vscode.languages.registerHoverProvider({ language: 'modelfile' }, createHoverProvider()),

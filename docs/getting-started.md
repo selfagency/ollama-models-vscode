@@ -37,12 +37,12 @@ Follow the prompts in your browser. Once logged in, Cloud models appear in the s
 
 The extension integrates with the [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat) extension. Make sure it is installed and signed in.
 
-### Install Ollama for GitHub Copilot
+### Install Opilot
 
-Search for **"Ollama for GitHub Copilot"** in the VS Code Extensions panel, or run:
+Search for **"Opilot"** in the VS Code Extensions panel, or run:
 
 ```bash
-code --install-extension selfagency.ollama-copilot
+code --install-extension selfagency.opilot
 ```
 
 The Ollama activity bar icon (🦙) will appear automatically on next startup.

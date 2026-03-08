@@ -512,7 +512,7 @@ describe('handleBuildModelfile', () => {
     const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ollama-copilot.refreshLocalModels');
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('opilot.refreshLocalModels');
   });
 
   it('shows error message when client.create throws', async () => {
@@ -763,17 +763,11 @@ describe('registerModelfileManager', () => {
     registerModelfileManager(context, client);
 
     expect(vscode.window.registerTreeDataProvider).toHaveBeenCalledWith('ollama-modelfiles', expect.any(Object));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'ollama-copilot.refreshModelfiles',
-      expect.any(Function),
-    );
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.newModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.editModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.buildModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'ollama-copilot.openModelfilesFolder',
-      expect.any(Function),
-    );
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.refreshModelfiles', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.newModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.editModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.buildModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.openModelfilesFolder', expect.any(Function));
     expect(vscode.languages.registerHoverProvider).toHaveBeenCalledWith(
       expect.objectContaining({ language: 'modelfile' }),
       expect.any(Object),
@@ -813,19 +807,19 @@ describe('registerModelfileManager', () => {
     const getCb = (name: string) => cbMap.get(name);
 
     // refreshModelfiles: () => provider.refresh()
-    getCb('ollama-copilot.refreshModelfiles')?.();
+    getCb('opilot.refreshModelfiles')?.();
 
     // newModelfile: () => handleNewModelfile(path, client) — showInputBox returns undefined → early return
-    await getCb('ollama-copilot.newModelfile')?.();
+    await getCb('opilot.newModelfile')?.();
 
     // editModelfile: (item) => executeCommand('vscode.open', item.uri) — pass fake item
-    getCb('ollama-copilot.editModelfile')?.({ uri: { fsPath: '/fake/test.modelfile' } });
+    getCb('opilot.editModelfile')?.({ uri: { fsPath: '/fake/test.modelfile' } });
 
     // buildModelfile: (item) => handleBuildModelfile(item, client) — showInputBox returns undefined → early return
-    await getCb('ollama-copilot.buildModelfile')?.({ label: 'test', uri: { fsPath: '/fake/test.modelfile' } });
+    await getCb('opilot.buildModelfile')?.({ label: 'test', uri: { fsPath: '/fake/test.modelfile' } });
 
     // openModelfilesFolder: async () => handleOpenModelfilesFolder(path) — env.openExternal is mocked
-    await getCb('ollama-copilot.openModelfilesFolder')?.();
+    await getCb('opilot.openModelfilesFolder')?.();
 
     expect(cbMap.size).toBeGreaterThan(0);
   });

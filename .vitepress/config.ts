@@ -1,5 +1,6 @@
 export default {
-  title: 'Ollama for GitHub Copilot',
+  title: 'Opilot',
+  titleTemplate: 'Opilot — Ollama for GitHub Copilot',
   description: 'Run Ollama models with full tool and vision support in GitHub Copilot Chat',
   base: '/',
   srcDir: 'docs',
@@ -13,9 +14,9 @@ export default {
       { text: 'Developers', link: '/developers/' },
       {
         text: 'Install',
-        link: 'https://marketplace.visualstudio.com/items?itemName=selfagency.ollama-copilot',
+        link: 'https://marketplace.visualstudio.com/items?itemName=selfagency.opilot',
       },
-      { text: 'GitHub', link: 'https://github.com/selfagency/ollama-copilot' },
+      { text: 'GitHub', link: 'https://github.com/selfagency/opilot' },
     ],
     sidebar: {
       '/users/': [

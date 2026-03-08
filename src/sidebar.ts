@@ -1989,7 +1989,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       })
       .catch(error => {
         reportError(this.logChannel, 'Cloud models fetch failed', error, { showToUser: false });
-        return [makeStatusActionItem('Login to Ollama Cloud', 'ollama-copilot.loginCloud')];
+        return [makeStatusActionItem('Login to Ollama Cloud', 'opilot.loginCloud')];
       })
       .finally(() => {
         this.loadPromise = null;
@@ -2011,7 +2011,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
     }
 
     if (this.catalogModelNames.length === 0) {
-      return [makeStatusActionItem('Login to Ollama Cloud', 'ollama-copilot.loginCloud')];
+      return [makeStatusActionItem('Login to Ollama Cloud', 'opilot.loginCloud')];
     }
 
     const items = this.buildCloudItemsFromCatalog(runningModels);
@@ -2514,16 +2514,16 @@ export function registerSidebar(
     localTreeView,
     libraryTreeView,
     cloudTreeView,
-    commands.registerCommand('ollama-copilot.collapseLocalModels', () =>
+    commands.registerCommand('opilot.collapseLocalModels', () =>
       commands.executeCommand('workbench.actions.treeView.ollama-local-models.collapseAll'),
     ),
-    commands.registerCommand('ollama-copilot.collapseCloudModels', () =>
+    commands.registerCommand('opilot.collapseCloudModels', () =>
       commands.executeCommand('workbench.actions.treeView.ollama-cloud-models.collapseAll'),
     ),
-    commands.registerCommand('ollama-copilot.collapseLibrary', () =>
+    commands.registerCommand('opilot.collapseLibrary', () =>
       commands.executeCommand('workbench.actions.treeView.ollama-library-models.collapseAll'),
     ),
-    commands.registerCommand('ollama-copilot.filterLocalModels', async () => {
+    commands.registerCommand('opilot.filterLocalModels', async () => {
       const value = await window.showInputBox({ prompt: 'Filter local models', value: localProvider.filterText });
       if (value !== undefined) {
         localProvider.filterText = value;
@@ -2531,12 +2531,12 @@ export function registerSidebar(
         localProvider.refresh();
       }
     }),
-    commands.registerCommand('ollama-copilot.clearLocalFilter', () => {
+    commands.registerCommand('opilot.clearLocalFilter', () => {
       localProvider.filterText = '';
       void commands.executeCommand('setContext', 'ollama.localFilterActive', false);
       localProvider.refresh();
     }),
-    commands.registerCommand('ollama-copilot.filterCloudModels', async () => {
+    commands.registerCommand('opilot.filterCloudModels', async () => {
       const value = await window.showInputBox({ prompt: 'Filter cloud models', value: cloudProvider.filterText });
       if (value !== undefined) {
         cloudProvider.filterText = value;
@@ -2544,12 +2544,12 @@ export function registerSidebar(
         cloudProvider.refresh();
       }
     }),
-    commands.registerCommand('ollama-copilot.clearCloudFilter', () => {
+    commands.registerCommand('opilot.clearCloudFilter', () => {
       cloudProvider.filterText = '';
       void commands.executeCommand('setContext', 'ollama.cloudFilterActive', false);
       cloudProvider.refresh();
     }),
-    commands.registerCommand('ollama-copilot.filterLibraryModels', async () => {
+    commands.registerCommand('opilot.filterLibraryModels', async () => {
       const value = await window.showInputBox({ prompt: 'Filter library models', value: libraryProvider.filterText });
       if (value !== undefined) {
         libraryProvider.filterText = value;
@@ -2557,7 +2557,7 @@ export function registerSidebar(
         libraryProvider.refresh();
       }
     }),
-    commands.registerCommand('ollama-copilot.clearLibraryFilter', () => {
+    commands.registerCommand('opilot.clearLibraryFilter', () => {
       libraryProvider.filterText = '';
       void commands.executeCommand('setContext', 'ollama.libraryFilterActive', false);
       libraryProvider.refresh();
@@ -2572,10 +2572,10 @@ export function registerSidebar(
         void commands.executeCommand('setContext', 'ollama.localGrouped', localProvider.grouped);
         localProvider.refresh();
       };
-      return commands.registerCommand('ollama-copilot.toggleLocalGrouping', toggleLocal);
+      return commands.registerCommand('opilot.toggleLocalGrouping', toggleLocal);
     })(),
-    commands.registerCommand('ollama-copilot.toggleLocalGroupingToTree', () => {
-      void commands.executeCommand('ollama-copilot.toggleLocalGrouping');
+    commands.registerCommand('opilot.toggleLocalGroupingToTree', () => {
+      void commands.executeCommand('opilot.toggleLocalGrouping');
     }),
     (() => {
       const initialCloudGrouped = context.globalState.get<boolean>('ollama.cloudGrouped', true);
@@ -2587,10 +2587,10 @@ export function registerSidebar(
         void commands.executeCommand('setContext', 'ollama.cloudGrouped', cloudProvider.grouped);
         cloudProvider.refresh();
       };
-      return commands.registerCommand('ollama-copilot.toggleCloudGrouping', toggleCloud);
+      return commands.registerCommand('opilot.toggleCloudGrouping', toggleCloud);
     })(),
-    commands.registerCommand('ollama-copilot.toggleCloudGroupingToTree', () => {
-      void commands.executeCommand('ollama-copilot.toggleCloudGrouping');
+    commands.registerCommand('opilot.toggleCloudGroupingToTree', () => {
+      void commands.executeCommand('opilot.toggleCloudGrouping');
     }),
     (() => {
       const initialLibraryGrouped = context.globalState.get<boolean>('ollama.libraryGrouped', true);
@@ -2602,40 +2602,32 @@ export function registerSidebar(
         void commands.executeCommand('setContext', 'ollama.libraryGrouped', libraryProvider.grouped);
         libraryProvider.refresh();
       };
-      return commands.registerCommand('ollama-copilot.toggleLibraryGrouping', toggleLibrary);
+      return commands.registerCommand('opilot.toggleLibraryGrouping', toggleLibrary);
     })(),
-    commands.registerCommand('ollama-copilot.toggleLibraryGroupingToTree', () => {
-      void commands.executeCommand('ollama-copilot.toggleLibraryGrouping');
+    commands.registerCommand('opilot.toggleLibraryGroupingToTree', () => {
+      void commands.executeCommand('opilot.toggleLibraryGrouping');
     }),
-    commands.registerCommand('ollama-copilot.refreshSidebar', () => handleRefreshLocalModels(localProvider)),
-    commands.registerCommand('ollama-copilot.refreshLocalModels', () => handleRefreshLocalModels(localProvider)),
-    commands.registerCommand('ollama-copilot.refreshLibrary', () => handleRefreshLibrary(libraryProvider)),
-    commands.registerCommand('ollama-copilot.refreshCloudModels', () => handleRefreshCloudModels(cloudProvider)),
-    commands.registerCommand('ollama-copilot.manageCloudApiKey', async () =>
+    commands.registerCommand('opilot.refreshSidebar', () => handleRefreshLocalModels(localProvider)),
+    commands.registerCommand('opilot.refreshLocalModels', () => handleRefreshLocalModels(localProvider)),
+    commands.registerCommand('opilot.refreshLibrary', () => handleRefreshLibrary(libraryProvider)),
+    commands.registerCommand('opilot.refreshCloudModels', () => handleRefreshCloudModels(cloudProvider)),
+    commands.registerCommand('opilot.manageCloudApiKey', async () =>
       handleManageCloudApiKey(context, cloudProvider, libraryProvider, logChannel),
     ),
-    commands.registerCommand('ollama-copilot.loginCloud', () => handleLoginToCloud()),
-    commands.registerCommand('ollama-copilot.openCloudModel', (item: ModelTreeItem) => handleOpenCloudModel(item)),
-    commands.registerCommand('ollama-copilot.deleteModel', (item: ModelTreeItem) =>
-      handleDeleteModel(item, localProvider),
-    ),
-    commands.registerCommand('ollama-copilot.pullModel', async () =>
-      handlePullModel(client, localProvider, logChannel),
-    ),
-    commands.registerCommand('ollama-copilot.pullModelFromLibrary', async (item: ModelTreeItem) =>
+    commands.registerCommand('opilot.loginCloud', () => handleLoginToCloud()),
+    commands.registerCommand('opilot.openCloudModel', (item: ModelTreeItem) => handleOpenCloudModel(item)),
+    commands.registerCommand('opilot.deleteModel', (item: ModelTreeItem) => handleDeleteModel(item, localProvider)),
+    commands.registerCommand('opilot.pullModel', async () => handlePullModel(client, localProvider, logChannel)),
+    commands.registerCommand('opilot.pullModelFromLibrary', async (item: ModelTreeItem) =>
       handlePullModelFromLibrary(item, client, localProvider, logChannel),
     ),
-    commands.registerCommand('ollama-copilot.openLibraryModelPage', (item: ModelTreeItem) =>
-      handleOpenLibraryModelPage(item),
-    ),
-    commands.registerCommand('ollama-copilot.startModel', (item: ModelTreeItem) =>
-      handleStartModel(item, localProvider),
-    ),
-    commands.registerCommand('ollama-copilot.stopModel', (item: ModelTreeItem) => handleStopModel(item, localProvider)),
-    commands.registerCommand('ollama-copilot.startCloudModel', (item: ModelTreeItem) =>
+    commands.registerCommand('opilot.openLibraryModelPage', (item: ModelTreeItem) => handleOpenLibraryModelPage(item)),
+    commands.registerCommand('opilot.startModel', (item: ModelTreeItem) => handleStartModel(item, localProvider)),
+    commands.registerCommand('opilot.stopModel', (item: ModelTreeItem) => handleStopModel(item, localProvider)),
+    commands.registerCommand('opilot.startCloudModel', (item: ModelTreeItem) =>
       handleStartCloudModel(item, localProvider, cloudProvider),
     ),
-    commands.registerCommand('ollama-copilot.stopCloudModel', (item: ModelTreeItem) =>
+    commands.registerCommand('opilot.stopCloudModel', (item: ModelTreeItem) =>
       handleStopCloudModel(item, localProvider, cloudProvider),
     ),
     { dispose: () => localProvider.dispose() },

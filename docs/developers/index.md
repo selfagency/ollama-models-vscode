@@ -2,7 +2,7 @@
 title: Developer Guide
 ---
 
-This guide covers everything you need to build, test, and contribute to **Ollama for GitHub Copilot**.
+This guide covers everything you need to build, test, and contribute to **Opilot**.
 
 ## Prerequisites
 
@@ -26,8 +26,8 @@ npm install -g @go-task/cli
 
 ```bash
 # Clone
-git clone https://github.com/selfagency/ollama-copilot
-cd ollama-copilot
+git clone https://github.com/selfagency/opilot
+cd opilot
 
 # Install dependencies
 pnpm install

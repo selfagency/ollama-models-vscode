@@ -1,6 +1,6 @@
 # GitHub Copilot Instructions for Agent: Visual Studio Code Extension Integrating Ollama into GitHub Copilot Chat
 
-Welcome! This document guides you through the recommended workflows, conventions, and tooling when working on the **Ollama for Copilot** VS Code extension project. Follow these instructions strictly to ensure consistency, quality, and smooth collaboration.
+Welcome! This document guides you through the recommended workflows, conventions, and tooling when working on the **Opilot** VS Code extension project. Follow these instructions strictly to ensure consistency, quality, and smooth collaboration.
 
 ---
 
@@ -19,7 +19,7 @@ Welcome! This document guides you through the recommended workflows, conventions
 
 ## 2. Project Overview
 
-You are working on the **Ollama for Copilot** extension, which integrates Ollama models into GitHub Copilot Chat inside VS Code.
+You are working on the **Opilot** extension, which integrates Ollama models into GitHub Copilot Chat inside VS Code.
 
 ### Key Features to Keep in Mind
 

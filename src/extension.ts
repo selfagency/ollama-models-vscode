@@ -14,7 +14,7 @@ import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
 import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
 
-const LANGUAGE_MODEL_VENDOR = 'selfagency-ollama';
+const LANGUAGE_MODEL_VENDOR = 'selfagency-opilot';
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:';
 let builtInOllamaConflictPromptInProgress = false;
 
@@ -225,7 +225,7 @@ export function setupChatParticipant(
 ): vscode.Disposable {
   const chat = chatApi || vscode.chat;
 
-  const participant = chat.createChatParticipant('ollama-copilot.ollama', participantHandler);
+  const participant = chat.createChatParticipant('opilot.ollama', participantHandler);
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
   return participant;
 }
@@ -792,7 +792,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const logOutputChannel =
     typeof vscode.window.createOutputChannel === 'function'
-      ? vscode.window.createOutputChannel('Ollama for Copilot', { log: true })
+      ? vscode.window.createOutputChannel('Opilot', { log: true })
       : undefined;
 
   const diagnostics = logOutputChannel
@@ -828,16 +828,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const sidebarRegistration = registerSidebar(context, client, diagnostics, () => provider.refreshModels());
 
   const subscriptions: vscode.Disposable[] = [
-    vscode.commands.registerCommand('ollama-copilot.manageAuthToken', async () => {
+    vscode.commands.registerCommand('opilot.manageAuthToken', async () => {
       await provider.setAuthToken();
     }),
-    vscode.commands.registerCommand('ollama-copilot.refreshModels', () => {
+    vscode.commands.registerCommand('opilot.refreshModels', () => {
       provider.refreshModels();
       diagnostics.info('[client] model list refresh triggered');
     }),
-    vscode.commands.registerCommand('ollama-copilot.dumpPerformanceSnapshot', () => {
+    vscode.commands.registerCommand('opilot.dumpPerformanceSnapshot', () => {
       logPerformanceSnapshot(diagnostics, sidebarRegistration?.getProfilingSnapshot?.());
-      void vscode.window.showInformationMessage('Performance snapshot written to Ollama for Copilot logs');
+      void vscode.window.showInformationMessage('Performance snapshot written to Opilot logs');
     }),
     {
       dispose: () => stopLogStreaming(),

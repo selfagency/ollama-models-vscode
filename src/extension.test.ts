@@ -112,7 +112,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(registerLanguageModelChatProvider).toHaveBeenCalledWith('selfagency-ollama', expect.anything());
+    expect(registerLanguageModelChatProvider).toHaveBeenCalledWith('selfagency-opilot', expect.anything());
   });
 
   it('does not throw when provider vendor is already registered', async () => {
@@ -586,7 +586,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(createOutputChannel).toHaveBeenCalledWith('Ollama for Copilot', expect.any(Object));
+    expect(createOutputChannel).toHaveBeenCalledWith('Opilot', expect.any(Object));
   });
 
   it('throws on unhandled registration error', async () => {
@@ -802,7 +802,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(registerCommand).toHaveBeenCalledWith('ollama-copilot.manageAuthToken', expect.any(Function));
+    expect(registerCommand).toHaveBeenCalledWith('opilot.manageAuthToken', expect.any(Function));
   });
 
   it('handles autoStartLogStreaming configuration changes', async () => {
@@ -1115,7 +1115,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'what is the meaning of life?',
-      model: { vendor: 'selfagency-ollama', id: 'qwen3:8b' },
+      model: { vendor: 'selfagency-opilot', id: 'qwen3:8b' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1187,7 +1187,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'hi',
-      model: { vendor: 'selfagency-ollama', id: 'qwen3:8b' },
+      model: { vendor: 'selfagency-opilot', id: 'qwen3:8b' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1258,7 +1258,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: "what's the weather?",
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1329,7 +1329,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'hello',
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1408,7 +1408,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
     const mockClient = { chat };
     const request = {
       prompt: '@ollama hello',
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
       toolInvocationToken: 'tok-1',
     };
 
@@ -1479,7 +1479,7 @@ describe('setupChatParticipant', () => {
 
     const result = ext.setupChatParticipant(mockContext as any, mockHandler, { createChatParticipant } as any);
 
-    expect(createChatParticipant).toHaveBeenCalledWith('ollama-copilot.ollama', mockHandler);
+    expect(createChatParticipant).toHaveBeenCalledWith('opilot.ollama', mockHandler);
     expect(mockParticipant.iconPath).toBeDefined();
     expect(result).toBe(mockParticipant);
   });
@@ -1495,7 +1495,7 @@ describe('handleChatRequest errors', () => {
     const mockRequest = {
       prompt: 'test',
       model: {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: vi.fn(() => {
           throw new Error('Model error');
         }),
@@ -1558,7 +1558,7 @@ describe('handleChatRequest model selection', () => {
     });
     const mockSelectChatModels = vi
       .fn()
-      .mockResolvedValue([{ vendor: 'selfagency-ollama', sendRequest: mockSendRequest }]);
+      .mockResolvedValue([{ vendor: 'selfagency-opilot', sendRequest: mockSendRequest }]);
 
     vi.doMock('vscode', () => ({
       LanguageModelTextPart: LMTextPart,
@@ -1617,7 +1617,7 @@ describe('handleChatRequest model selection', () => {
     const mockMarkdown = vi.fn();
     const mockRequest = {
       prompt: 'test',
-      model: { vendor: 'selfagency-ollama', sendRequest: mockSendRequest },
+      model: { vendor: 'selfagency-opilot', sendRequest: mockSendRequest },
     };
 
     await ext.handleChatRequest(
@@ -1669,7 +1669,7 @@ describe('handleChatRequest model selection', () => {
     const mockInvokeTool = vi.fn().mockResolvedValue({ content: [new LMTextPart('tool-result')] });
     const mockSelectChatModels = vi.fn().mockResolvedValue([
       {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: mockSendRequest,
       },
     ]);
@@ -1753,7 +1753,7 @@ describe('handleChatRequest model selection', () => {
     const mockInvokeTool = vi.fn().mockRejectedValue(new Error('tool crashed'));
     const mockSelectChatModels = vi.fn().mockResolvedValue([
       {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: mockSendRequest,
       },
     ]);

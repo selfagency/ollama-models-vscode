@@ -21,9 +21,9 @@ This page gives a detailed overview of the extension architecture and key runtim
 
 When VS Code activates the extension, `activate()` in `extension.ts`:
 
-1. Creates a `DiagnosticsLogger` (output channel: "Ollama for Copilot")
+1. Creates a `DiagnosticsLogger` (output channel: "Opilot")
 2. Reads configuration (`ollama.host`, etc.) and creates an `OllamaClient`
-3. Registers the **VS Code Language Model provider** (`selfagency-ollama` vendor)
+3. Registers the **VS Code Language Model provider** (`selfagency-opilot` vendor)
 4. Registers the **`@ollama` chat participant**
 5. Registers the **inline completion provider** (if `ollama.completionModel` is set)
 6. Initializes the **sidebar** (four tree views + their commands)

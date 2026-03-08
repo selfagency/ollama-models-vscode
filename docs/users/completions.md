@@ -41,7 +41,7 @@ Toggle `ollama.enableInlineCompletions` to `false` in Settings at any time. You 
 
 - Verify `ollama.completionModel` is set to a model that is installed locally
 - Verify Ollama is running (`curl http://localhost:11434`)
-- Check the **Ollama output channel** (`Ctrl+Shift+U` then select "Ollama for Copilot") for errors
+- Check the **Ollama output channel** (`Ctrl+Shift+U` then select "Opilot") for errors
 
 **Completions are slow**
 

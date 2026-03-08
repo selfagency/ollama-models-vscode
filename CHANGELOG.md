@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `LanguageModelChatProvider` registration under vendor `selfagency-ollama`, making local Ollama models available in GitHub Copilot Chat and the VS Code model picker
-- `@ollama` chat participant (`ollama-copilot.ollama`) with history-aware direct streaming to the Ollama API
+- `LanguageModelChatProvider` registration under vendor `selfagency-opilot`, making local Ollama models available in GitHub Copilot Chat and the VS Code model picker
+- `@ollama` chat participant (`opilot.ollama`) with history-aware direct streaming to the Ollama API
 - Tool calling support for compatible models (e.g. `qwen2.5`, `llama3.1`) via the VS Code LM tool API; all models advertise `toolCalling: true` for picker visibility
 - Full agentic tool-invocation loop in `@ollama` participant (up to 10 rounds)
 - Vision / multimodal image input support
@@ -18,19 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model management sidebar with four panels: **Local Models**, **Cloud Models**, **Library**, and **Modelfiles**
 - Model capability badges shown in the sidebar: 🧠 thinking, 🛠️ tool calling, 👁️ vision, 🧩 embedding; family group nodes aggregate badges from all child variants
 - Model family grouping for Local Models, Cloud Models, and Library panels — models are grouped into collapsible family nodes by default with a toggle to switch to a flat list
-- Filter bar for Local Models, Cloud Models, and Library panels (`ollama-copilot.filterLocalModels`, `ollama-copilot.filterCloudModels`, `ollama-copilot.filterLibraryModels`) with corresponding clear commands
-- Collapse-all toolbar button for each sidebar panel (`ollama-copilot.collapseLocalModels`, `ollama-copilot.collapseCloudModels`, `ollama-copilot.collapseLibrary`)
+- Filter bar for Local Models, Cloud Models, and Library panels (`opilot.filterLocalModels`, `opilot.filterCloudModels`, `opilot.filterLibraryModels`) with corresponding clear commands
+- Collapse-all toolbar button for each sidebar panel (`opilot.collapseLocalModels`, `opilot.collapseCloudModels`, `opilot.collapseLibrary`)
 - Cloud Models panel that lists models from Ollama Cloud (requires `ollama login`); includes start, stop, delete, and open-page actions
-- `ollama-copilot.loginCloud` command shown as a toolbar button in the Cloud Models panel header
-- Streaming pull progress shown in the sidebar when downloading models from the library (`ollama-copilot.pullModelFromLibrary`)
+- `opilot.loginCloud` command shown as a toolbar button in the Cloud Models panel header
+- Streaming pull progress shown in the sidebar when downloading models from the library (`opilot.pullModelFromLibrary`)
 - **Modelfile Manager** sidebar pane with syntax highlighting, hover documentation, and autocomplete for Modelfile instructions (including the `REQUIRES` keyword and all common `PARAMETER` names)
-- `ollama-copilot.openModelfilesFolder` command to reveal the modelfiles directory in the OS file manager
+- `opilot.openModelfilesFolder` command to reveal the modelfiles directory in the OS file manager
 - Inline code completion provider (fill-in-middle) for all locally running Ollama models
 - Library model panel with collapsible variant children; supports newest-first sorting (`?sort=newest`); downloaded variants show a ✓ checkmark
-- Key-icon auth token management button in panel headers (`ollama-copilot.manageAuthToken`)
+- Key-icon auth token management button in panel headers (`opilot.manageAuthToken`)
 - Remote Ollama instance support with configurable host URL and Bearer token stored in VS Code secrets
 - Log streaming from the Ollama server process (macOS, Linux, Windows)
-- `ollama-copilot.dumpPerformanceSnapshot` command — writes a structured JSON snapshot of Node.js memory usage and sidebar cache state to the Ollama output channel
+- `opilot.dumpPerformanceSnapshot` command — writes a structured JSON snapshot of Node.js memory usage and sidebar cache state to the Ollama output channel
 - Conflict detection: optionally removes the VS Code built-in Ollama provider entry if this extension is active
 - Per-request Ollama client instantiation so host/token changes take effect immediately
 - Model list caching with a 5-second throttle and 6-hour background refresh for model info

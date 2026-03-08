@@ -2,7 +2,7 @@
 title: Command Reference
 ---
 
-All Ollama for Copilot commands are accessible via the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`). Type **"Ollama"** to filter to extension commands. Most commands are also accessible through the sidebar panels and context menus.
+All Opilot commands are accessible via the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`). Type **"Ollama"** to filter to extension commands. Most commands are also accessible through the sidebar panels and context menus.
 
 ## Authentication
 
@@ -151,7 +151,7 @@ Rescans the modelfiles directory and updates the panel.
 
 ### `Ollama: Dump Performance Snapshot`
 
-Outputs a performance timing snapshot to the **Ollama for Copilot** output channel. Useful when profiling response latency or troubleshooting provider initialization timing.
+Outputs a performance timing snapshot to the **Opilot** output channel. Useful when profiling response latency or troubleshooting provider initialization timing.
 
 ### `Ollama: Refresh Ollama Models`
 

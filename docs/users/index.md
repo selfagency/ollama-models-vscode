@@ -4,7 +4,7 @@ title: User's Guide
 
 ## Overview
 
-The Ollama for GitHub Copilot extension brings the full Ollama model ecosystem into VS Code. After installation and a model pull, you can use local AI models in Copilot Chat, as inline code completions, and in a dedicated `@ollama` chat participant — all without leaving the editor.
+The Opilot extension brings the full Ollama model ecosystem into VS Code. After installation and a model pull, you can use local AI models in Copilot Chat, as inline code completions, and in a dedicated `@ollama` chat participant — all without leaving the editor.
 
 ## Sidebar Layout
 

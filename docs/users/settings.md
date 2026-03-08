@@ -71,7 +71,7 @@ How often (in seconds) to auto-refresh the **Ollama Library** and **Cloud** mode
 | --------- | ------- |
 | `boolean` | `true`  |
 
-When enabled, streams Ollama server log output to the **Ollama for Copilot** output channel in real time.
+When enabled, streams Ollama server log output to the **Opilot** output channel in real time.
 
 - **macOS**: tails `~/.ollama/logs/server.log`
 - **Windows**: tails `%LOCALAPPDATA%\Ollama\server.log`
@@ -85,7 +85,7 @@ Disable if stream output is noisy or you prefer a quiet channel.
 | -------- | -------- | ---------------------------------------- |
 | `string` | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |
 
-Controls verbosity of extension diagnostic output in the **Ollama for Copilot** output channel.
+Controls verbosity of extension diagnostic output in the **Opilot** output channel.
 
 | Level   | Shows                                                |
 | ------- | ---------------------------------------------------- |
