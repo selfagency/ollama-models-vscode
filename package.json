@@ -68,14 +68,6 @@
     "vitest": "^4.0.18",
     "zx": "^8.8.5"
   },
-  "pnpm": {
-    "overrides": {
-      "minimist": "^1.2.8",
-      "minimatch": "^10.2.4",
-      "serialize-javascript": "^7.0.4",
-      "diff": "^8.0.3"
-    }
-  },
   "lint-staged": {
     "scripts/*.mjs": [
       "task precommit -- "
@@ -635,5 +627,13 @@
   "engines": {
     "vscode": "^1.109.0"
   },
-  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017"
+  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
+  "pnpm": {
+    "overrides": {
+      "minimist": "^1.2.8",
+      "minimatch": "^10.2.4",
+      "serialize-javascript": "^7.0.4",
+      "diff": "^8.0.3"
+    }
+  }
 }

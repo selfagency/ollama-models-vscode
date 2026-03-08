@@ -1200,9 +1200,7 @@ describe('handleNewModelfile edge cases', () => {
 
   it('falls back to default model when client.list() throws', async () => {
     const vscode = await import('vscode');
-    vi.mocked(vscode.window.showInputBox)
-      .mockResolvedValueOnce('my-bot')
-      .mockResolvedValueOnce('You are helpful.');
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('my-bot').mockResolvedValueOnce('You are helpful.');
     vi.mocked(vscode.window.showQuickPick).mockResolvedValue({ label: 'llama3.2:3b', description: 'default' });
     vi.mocked(vscode.window.showTextDocument).mockResolvedValue(undefined as any);
 
@@ -1278,9 +1276,7 @@ describe('handleBuildModelfile missing FROM', () => {
     const item = new ModelfileItem({ fsPath: '/modelfiles/bad.modelfile' } as any);
     await handleBuildModelfile(item, mockClient);
 
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('missing the required FROM'),
-    );
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('missing the required FROM'));
     expect(mockClient.create).not.toHaveBeenCalled();
   });
 

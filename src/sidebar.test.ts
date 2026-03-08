@@ -1,7 +1,7 @@
 import type { Ollama } from 'ollama';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtensionContext } from 'vscode';
 import type { CloudModelsProvider, LibraryModelsProvider, LocalModelsProvider, ModelTreeItem } from './sidebar.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('LocalModelsProvider', () => {
   let provider: any;

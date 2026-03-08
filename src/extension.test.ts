@@ -2453,6 +2453,10 @@ describe('handleConnectionTestFailure Open Logs path', () => {
   });
 
   it('shows warning when openTextDocument throws', async () => {
+    // Force darwin so getOllamaServerLogPath() returns a path on CI Linux too
+    const platformDesc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+
     const openTextDocument = vi.fn().mockRejectedValue(new Error('file not found'));
     const showWarningMessage = vi.fn().mockResolvedValue(undefined);
 
@@ -2504,15 +2508,12 @@ describe('handleConnectionTestFailure Open Logs path', () => {
     const showErrorMessage = vi.fn().mockResolvedValue('Open Logs');
     const ext = await import('./extension.js');
 
-    // On macOS, getOllamaServerLogPath returns a path. On Linux it returns null.
-    // For the "file open throws" case, we only execute this on macOS.
-    if (process.platform === 'darwin' || process.platform === 'win32') {
-      await ext.handleConnectionTestFailure(
-        'http://localhost:11434',
-        { showErrorMessage },
-        { executeCommand: vi.fn() },
-      );
-      expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Could not open Ollama logs'));
+    await ext.handleConnectionTestFailure('http://localhost:11434', { showErrorMessage }, { executeCommand: vi.fn() });
+    expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Could not open Ollama logs'));
+
+    // Restore process.platform
+    if (platformDesc) {
+      Object.defineProperty(process, 'platform', platformDesc);
     }
   });
 });

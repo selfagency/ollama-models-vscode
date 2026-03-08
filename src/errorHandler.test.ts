@@ -80,7 +80,9 @@ describe('reportError', () => {
     const throwingLogger = {
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn().mockImplementation(() => { throw new Error('logger broken'); }),
+      error: vi.fn().mockImplementation(() => {
+        throw new Error('logger broken');
+      }),
       debug: vi.fn(),
       exception: vi.fn(),
     };

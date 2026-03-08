@@ -1,12 +1,5 @@
+import type { Ollama } from 'ollama';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  LanguageModelChatMessageRole,
-  LanguageModelDataPart,
-  LanguageModelTextPart,
-  LanguageModelToolCallPart,
-  LanguageModelToolResultPart,
-  window,
-} from 'vscode';
 import type {
   CancellationToken,
   ExtensionContext,
@@ -16,9 +9,16 @@ import type {
   Progress,
   ProvideLanguageModelChatResponseOptions,
 } from 'vscode';
-import type { Ollama } from 'ollama';
-import type { DiagnosticsLogger } from './diagnostics.js';
+import {
+  LanguageModelChatMessageRole,
+  LanguageModelDataPart,
+  LanguageModelTextPart,
+  LanguageModelToolCallPart,
+  LanguageModelToolResultPart,
+  window,
+} from 'vscode';
 import { getCloudOllamaClient, getOllamaClient } from './client.js';
+import type { DiagnosticsLogger } from './diagnostics.js';
 import { formatModelName, isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 
 function makeLogger(): DiagnosticsLogger {
@@ -123,11 +123,7 @@ describe('OllamaChatModelProvider caching', () => {
     const list = vi.fn().mockResolvedValue({ models: [{ name: 'llama3' }] });
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
@@ -143,16 +139,15 @@ describe('OllamaChatModelProvider caching', () => {
       .mockResolvedValueOnce({ models: [{ name: 'llama3' }, { name: 'starcoder2' }] });
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
     // Advance time past the 5-second throttle window so the next call re-fetches.
     vi.setSystemTime(new Date('2026-03-05T00:00:06.000Z'));
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     expect(list).toHaveBeenCalledTimes(2);
     expect(models.map(m => m.id)).toContain('ollama:starcoder2');
@@ -162,11 +157,7 @@ describe('OllamaChatModelProvider caching', () => {
     const list = vi.fn().mockResolvedValue({ models: [{ name: 'llama3' }] });
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
     vi.setSystemTime(new Date('2026-03-05T00:00:31.000Z'));
@@ -180,11 +171,7 @@ describe('OllamaChatModelProvider caching', () => {
     const list = vi.fn().mockResolvedValue({ models: [] });
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     // Directly populate the private sets (via type cast for testing)
     const providerWithPrivate = provider as unknown as {
@@ -220,7 +207,11 @@ describe('OllamaChatModelProvider utility flows', () => {
       makeLogger(),
     );
 
-    const count = await provider.provideTokenCount({} as unknown as LanguageModelChatInformation, '12345678', {} as unknown as CancellationToken);
+    const count = await provider.provideTokenCount(
+      {} as unknown as LanguageModelChatInformation,
+      '12345678',
+      {} as unknown as CancellationToken,
+    );
     expect(count).toBe(2);
   });
 
@@ -239,7 +230,11 @@ describe('OllamaChatModelProvider utility flows', () => {
       ],
     } as unknown as LanguageModelChatRequestMessage;
 
-    const count = await provider.provideTokenCount({} as unknown as LanguageModelChatInformation, message, {} as unknown as CancellationToken);
+    const count = await provider.provideTokenCount(
+      {} as unknown as LanguageModelChatInformation,
+      message,
+      {} as unknown as CancellationToken,
+    );
     expect(count).toBeGreaterThan(0);
   });
 });
@@ -264,7 +259,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models[0]?.maxInputTokens).toBe(131072);
     expect(models[0]?.maxOutputTokens).toBe(131072);
     expect((models[0] as unknown as { category?: { label?: string } })?.category?.label).toBe('Ask');
@@ -283,7 +281,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models[0]?.capabilities?.toolCalling).toBe(true);
   });
 
@@ -300,7 +301,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models[0]?.capabilities?.imageInput).toBe(true);
   });
 
@@ -333,7 +337,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models).toBeDefined();
   });
 
@@ -349,7 +356,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models).toBeDefined();
   });
 
@@ -365,7 +375,10 @@ describe('OllamaChatModelProvider model detection', () => {
       makeLogger(),
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(models).toBeDefined();
     expect(models[0]?.capabilities).toBeDefined();
   });
@@ -386,7 +399,10 @@ describe('OllamaChatModelProvider error handling', () => {
       { info: vi.fn(), warn: vi.fn(), error, debug: vi.fn(), exception: vi.fn() } as unknown as DiagnosticsLogger,
     );
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     expect(error).toHaveBeenCalled();
     expect(models).toEqual([]);
@@ -398,13 +414,12 @@ describe('OllamaChatModelProvider error handling', () => {
     });
     const show = vi.fn().mockRejectedValue(new Error('Show failed'));
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     expect(models).toHaveLength(2);
     expect(models[0]?.name).toBe('Llama2');
@@ -422,11 +437,7 @@ describe('OllamaChatModelProvider error handling', () => {
       details: { families: [] },
     });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-05T00:00:00.000Z'));
@@ -454,20 +465,22 @@ describe('OllamaChatModelProvider error handling', () => {
 
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     // First call starts an in-flight fetch that hangs
-    const firstFetch = provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const firstFetch = provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     // Pull completes — refreshModels() should discard the stale in-flight promise
     provider.refreshModels();
 
     // VS Code queries again after the event fires — must NOT reuse the stale promise
-    const secondFetch = provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const secondFetch = provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     // Now resolve the first (stale) list with old data
     resolveFirstList({ models: [{ name: 'llama2' }] });
@@ -487,11 +500,7 @@ describe('OllamaChatModelProvider error handling', () => {
     const list = vi.fn().mockReturnValueOnce(listPending);
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     // Fire two concurrent requests while list() is still pending
     const call1 = provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
@@ -521,18 +530,20 @@ describe('OllamaChatModelProvider error handling', () => {
 
     const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
 
-    const provider = new OllamaChatModelProvider(
-      makeContext(),
-      { list, show } as unknown as Ollama,
-      makeLogger(),
-    );
+    const provider = new OllamaChatModelProvider(makeContext(), { list, show } as unknown as Ollama, makeLogger());
 
     // Start the first (stale) fetch
-    const firstFetch = provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const firstFetch = provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     // Discard stale fetch and start a fresh one
     provider.refreshModels();
-    const freshFetch = provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const freshFetch = provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
 
     // Fresh fetch resolves first
     const freshResult = await freshFetch;
@@ -543,7 +554,10 @@ describe('OllamaChatModelProvider error handling', () => {
     await firstFetch;
 
     // Query a third time — should serve from the FRESH cachedModelList, not stale
-    const thirdFetch = await provider.provideLanguageModelChatInformation({ silent: true }, {} as unknown as CancellationToken);
+    const thirdFetch = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      {} as unknown as CancellationToken,
+    );
     expect(thirdFetch.map((m: { id: string }) => m.id)).toContain('ollama:newmodel');
   });
 });
@@ -655,7 +669,15 @@ describe('OllamaChatModelProvider chat response', () => {
     );
 
     // Pre-register as a vision model so images are forwarded
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).visionByModelId.set('vision-model', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).visionByModelId.set('vision-model', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1263,8 +1285,24 @@ describe('OllamaChatModelProvider chat response', () => {
     );
 
     // Force native tool-calling support so the first request includes tools.
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('tool-model:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:tool-model:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('tool-model:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:tool-model:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1334,8 +1372,24 @@ describe('OllamaChatModelProvider chat response', () => {
     );
 
     // Force native tool-calling support so first request includes tools.
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('stablelm-zephyr:latest', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:stablelm-zephyr:latest', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('stablelm-zephyr:latest', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:stablelm-zephyr:latest', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1412,8 +1466,24 @@ describe('OllamaChatModelProvider chat response', () => {
     );
 
     // Force native tool-calling support so the first request includes tools and follows the same branch as runtime.
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1494,8 +1564,24 @@ describe('OllamaChatModelProvider chat response', () => {
       makeLogger(),
     );
 
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1651,8 +1737,24 @@ describe('OllamaChatModelProvider chat response', () => {
       makeLogger(),
     );
 
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1723,8 +1825,24 @@ describe('OllamaChatModelProvider chat response', () => {
       makeLogger(),
     );
 
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1795,8 +1913,24 @@ describe('OllamaChatModelProvider chat response', () => {
       makeLogger(),
     );
 
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     const token = { isCancellationRequested: false };
@@ -1857,8 +1991,24 @@ describe('OllamaChatModelProvider chat response', () => {
       makeLogger(),
     );
 
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
-    (provider as unknown as { visionByModelId: Map<string, boolean>; nativeToolCallingByModelId: Map<string, boolean>; thinkingModels: Set<string>; nonThinkingModels: Set<string>; clearModelCache(): void }).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+        nativeToolCallingByModelId: Map<string, boolean>;
+        thinkingModels: Set<string>;
+        nonThinkingModels: Set<string>;
+        clearModelCache(): void;
+      }
+    ).nativeToolCallingByModelId.set('ollama:kimi-k2-thinking:cloud', true);
 
     const progress = { report: vi.fn() };
     // Cancellation is already requested
@@ -2193,7 +2343,11 @@ describe('XML context extraction in message conversion', () => {
         maxOutputTokens: 100,
         capabilities: { imageInput: false, toolCalling: false },
       },
-      [turn1 as unknown as LanguageModelChatRequestMessage, turn1Reply as unknown as LanguageModelChatRequestMessage, turn2 as unknown as LanguageModelChatRequestMessage],
+      [
+        turn1 as unknown as LanguageModelChatRequestMessage,
+        turn1Reply as unknown as LanguageModelChatRequestMessage,
+        turn2 as unknown as LanguageModelChatRequestMessage,
+      ],
       { tools: [], toolMode: 'auto' } as unknown as ProvideLanguageModelChatResponseOptions,
       { report: vi.fn() } as unknown as Progress<LanguageModelResponsePart>,
       { isCancellationRequested: false } as unknown as CancellationToken,
