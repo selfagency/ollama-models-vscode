@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Ollama, type ChatResponse, type ShowResponse } from 'ollama';
+import { Ollama, type ChatResponse, type Message, type ShowResponse } from 'ollama';
 import {
   CancellationToken,
   EventEmitter,
@@ -52,6 +52,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   private toolCallIdMap: Map<string, string> = new Map();
   private reverseToolCallIdMap: Map<string, string> = new Map();
   private nativeToolCallingByModelId: Map<string, boolean> = new Map();
+  private visionByModelId: Map<string, boolean> = new Map();
   private thinkingModels = new Set<string>();
   private nonThinkingModels = new Set<string>();
 
@@ -139,6 +140,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         // Prune both the runtime ID and the provider-prefixed ID to prevent stale entries.
         this.nativeToolCallingByModelId.delete(modelName);
         this.nativeToolCallingByModelId.delete(this.toProviderModelId(modelName));
+        this.visionByModelId.delete(modelName);
+        this.visionByModelId.delete(this.toProviderModelId(modelName));
       }
     }
   }
@@ -147,6 +150,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     this.modelInfoCache.clear();
     this.models.clear();
     this.nativeToolCallingByModelId.clear();
+    this.visionByModelId.clear();
     this.cachedModelList = [];
     this.lastModelListRefreshMs = 0;
   }
@@ -175,6 +179,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     const nativeToolCalling = false;
     this.nativeToolCallingByModelId.set(modelId, nativeToolCalling);
     this.nativeToolCallingByModelId.set(providerModelId, nativeToolCalling);
+    this.visionByModelId.set(modelId, false);
+    this.visionByModelId.set(providerModelId, false);
     return this.withModelPickerMetadata(
       {
         id: providerModelId,
@@ -224,18 +230,14 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   }
 
   /**
-   * VS Code's chat model pickers filter out models with `toolCalling: false`,
-   * even when `isUserSelectable: true` and category are correctly set.
+   * VS Code's current picker filtering can hide models that advertise
+   * `toolCalling: false`, even when they are user-selectable and categorized.
    *
-   * Workaround: Advertise `toolCalling: true` for ALL models to pass picker
-   * filters. At runtime, non-tool models will ignore tool parameters (Ollama
-   * SDK behavior), ensuring correct operation while maintaining picker visibility.
-   *
-   * Native capability is still tracked separately via `nativeToolCallingByModelId`
-   * for internal reference.
+   * Workaround: advertise `toolCalling: true` for picker visibility.
+   * Runtime tool behavior is still gated by native capability checks via
+   * `nativeToolCallingByModelId` before sending tools in requests.
    */
   private getAdvertisedToolCalling(_nativeToolCalling: boolean): boolean {
-    // Always advertise true to pass VS Code's picker filtering
     return true;
   }
 
@@ -329,8 +331,11 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       }
 
       const nativeToolCalling = this.isToolModel(response);
+      const isVision = this.isVisionModel(response);
       this.nativeToolCallingByModelId.set(modelId, nativeToolCalling);
       this.nativeToolCallingByModelId.set(providerModelId, nativeToolCalling);
+      this.visionByModelId.set(modelId, isVision);
+      this.visionByModelId.set(providerModelId, isVision);
       const advertisedContextLength = this.getAdvertisedContextLength(contextLength, nativeToolCalling);
 
       return this.withModelPickerMetadata(
@@ -344,7 +349,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           maxInputTokens: advertisedContextLength,
           maxOutputTokens: advertisedContextLength,
           capabilities: {
-            imageInput: this.isVisionModel(response),
+            imageInput: isVision,
             toolCalling: this.getAdvertisedToolCalling(nativeToolCalling),
           },
         },
@@ -366,6 +371,77 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       error.name === 'ResponseError' &&
       error.message.toLowerCase().includes('does not support thinking')
     );
+  }
+
+  /**
+   * Some backends (notably certain cloud-routed models) can fail with a generic
+   * HTTP 500 when `think: true` is sent, instead of returning an explicit
+   * "does not support thinking" message. Treat this as retryable once without
+   * thinking.
+   */
+  private isThinkingInternalServerError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      error.name === 'ResponseError' &&
+      /(500\s+internal\s+server\s+error|"StatusCode"\s*:\s*500|"status_code"\s*:\s*500|"error"\s*:\s*"Internal Server Error")/i.test(
+        error.message,
+      )
+    );
+  }
+
+  private isToolsNotSupportedError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      /does not support tools|error validating json schema|schemaerror/i.test(error.message)
+    );
+  }
+
+  private normalizeToolInputSchema(inputSchema: unknown): Record<string, unknown> {
+    if (inputSchema && typeof inputSchema === 'object' && !Array.isArray(inputSchema)) {
+      return inputSchema as Record<string, unknown>;
+    }
+
+    return {
+      type: 'object',
+      properties: {},
+    };
+  }
+
+  private buildReducedCloudRescueMessages(messages: Message[]): Message[] {
+    const system = messages.find(m => m.role === 'system');
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+
+    const reduced: Message[] = [];
+    if (system) {
+      reduced.push(system);
+    }
+    if (lastUser) {
+      reduced.push(lastUser);
+    }
+
+    return reduced.length > 0 ? reduced : messages;
+  }
+
+  /**
+   * Convert simple XML-like tagged blocks into readable markdown sections.
+   * Example: <note>text</note> -> **Note**\ntext
+   */
+  private formatXmlLikeResponseForDisplay(text: string): string {
+    if (!text || !text.includes('<') || !text.includes('>')) {
+      return text;
+    }
+
+    const blockTagRe = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>([\s\S]*?)<\/\1>/g;
+    let replaced = false;
+    const transformed = text.replace(blockTagRe, (_full, rawTag: string, rawContent: string) => {
+      const tag = rawTag.replace(/[._-]+/g, ' ').trim();
+      const title = tag.charAt(0).toUpperCase() + tag.slice(1);
+      const content = String(rawContent).trim();
+      replaced = true;
+      return `\n\n**${title}**\n${content}\n\n`;
+    });
+
+    return replaced ? transformed.trim() : text;
   }
 
   /**
@@ -423,8 +499,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     this.clearToolCallIdMappings();
     const runtimeModelId = this.toRuntimeModelId(model.id);
 
-    // Convert VS Code messages to Ollama format
-    const ollamaMessages = this.toOllamaMessages(messages);
+    // Convert VS Code messages to Ollama format, stripping images for non-vision models
+    const supportsVision =
+      this.visionByModelId.get(model.id) ?? this.visionByModelId.get(runtimeModelId) ?? false;
+    const ollamaMessages = this.toOllamaMessages(messages, supportsVision);
 
     // Build tools array if supported
     let tools: Parameters<typeof this.client.chat>[0]['tools'] | undefined;
@@ -436,7 +514,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         function: {
           name: tool.name,
           description: tool.description || '',
-          parameters: tool.inputSchema as Record<string, unknown>,
+          parameters: this.normalizeToolInputSchema(tool.inputSchema),
         },
       }));
     }
@@ -460,7 +538,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
       try {
         this.outputChannel.debug?.(
-          `[Ollama] Chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}`,
+          `[Ollama] Chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}`,
         );
         response = await perRequestClient.chat({
           model: runtimeModelId,
@@ -472,15 +550,54 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         this.outputChannel.debug?.(`[Ollama] Chat response stream started for ${runtimeModelId}`);
       } catch (innerError) {
         this.outputChannel.exception(`[Ollama] Chat request failed for model ${runtimeModelId}`, innerError);
-        if (shouldThink && this.isThinkingNotSupportedError(innerError)) {
+        if (shouldThink && (this.isThinkingNotSupportedError(innerError) || this.isThinkingInternalServerError(innerError))) {
           this.thinkingModels.delete(runtimeModelId);
           this.nonThinkingModels.add(runtimeModelId);
           this.outputChannel.debug?.(`[Ollama] Retrying without thinking support for ${runtimeModelId}`);
+          try {
+            response = await perRequestClient.chat({
+              model: runtimeModelId,
+              messages: ollamaMessages,
+              stream: true,
+              tools,
+            });
+          } catch (retryError) {
+            if (
+              isCloudModel &&
+              tools &&
+              (this.isThinkingInternalServerError(retryError) || this.isToolsNotSupportedError(retryError))
+            ) {
+              this.outputChannel.warn(
+                `[Ollama] Cloud model ${runtimeModelId} failed with tools after think retry; retrying without tools`,
+              );
+              response = await perRequestClient.chat({
+                model: runtimeModelId,
+                messages: ollamaMessages,
+                stream: true,
+              });
+            } else {
+              throw retryError;
+            }
+          }
+        } else if (isCloudModel && tools && this.isThinkingInternalServerError(innerError)) {
+          this.outputChannel.warn(
+            `[Ollama] Cloud model ${runtimeModelId} failed with tools; retrying without tools`,
+          );
           response = await perRequestClient.chat({
             model: runtimeModelId,
             messages: ollamaMessages,
             stream: true,
-            tools,
+            ...(shouldThink ? { think: true } : {}),
+          });
+        } else if (tools && this.isToolsNotSupportedError(innerError)) {
+          this.outputChannel.warn(
+            `[Ollama] Model ${runtimeModelId} rejected tools; retrying without tools`,
+          );
+          response = await perRequestClient.chat({
+            model: runtimeModelId,
+            messages: ollamaMessages,
+            stream: true,
+            ...(shouldThink ? { think: true } : {}),
           });
         } else {
           throw innerError;
@@ -489,6 +606,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
       let thinkingStarted = false;
       let contentStarted = false;
+      let emittedOutput = false;
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -500,8 +618,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           if (!thinkingStarted) {
             progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
             thinkingStarted = true;
+            emittedOutput = true;
           }
           progress.report(new LanguageModelTextPart(chunk.message.thinking));
+          emittedOutput = true;
         }
 
         // Stream text chunks immediately as they arrive
@@ -509,9 +629,11 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           if (thinkingStarted && !contentStarted) {
             progress.report(new LanguageModelTextPart('\n\n---\n\n'));
             contentStarted = true;
+            emittedOutput = true;
           }
           this.outputChannel.debug?.(`[Ollama] Streaming chunk: ${chunk.message.content.substring(0, 50)}`);
-          progress.report(new LanguageModelTextPart(chunk.message.content));
+          progress.report(new LanguageModelTextPart(this.formatXmlLikeResponseForDisplay(chunk.message.content)));
+          emittedOutput = true;
         }
 
         // Handle tool calls
@@ -531,6 +653,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
                 toolCall.function?.arguments || {},
               ),
             );
+            emittedOutput = true;
           }
         }
 
@@ -540,8 +663,119 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           break;
         }
       }
+
+      // Some model/server combinations can return a successful stream that emits
+      // no visible content or tool calls, which causes VS Code to show
+      // "Sorry, no response was returned." Recover by retrying once without
+      // streaming and emit any returned content.
+      if (!emittedOutput && !token.isCancellationRequested) {
+        this.outputChannel.debug?.(
+          `[Ollama] Stream returned no output for ${runtimeModelId}; retrying with stream=false`,
+        );
+
+        const fallback = (await perRequestClient.chat({
+          model: runtimeModelId,
+          messages: ollamaMessages,
+          stream: false,
+          tools,
+          ...(shouldThink ? { think: true } : {}),
+        })) as ChatResponse;
+
+        if (fallback.message?.thinking) {
+          progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
+          progress.report(new LanguageModelTextPart(fallback.message.thinking));
+          emittedOutput = true;
+        }
+
+        if (fallback.message?.content) {
+          if (fallback.message?.thinking) {
+            progress.report(new LanguageModelTextPart('\n\n---\n\n'));
+          }
+          progress.report(new LanguageModelTextPart(this.formatXmlLikeResponseForDisplay(fallback.message.content)));
+          emittedOutput = true;
+        }
+
+        if (!emittedOutput) {
+          this.outputChannel.warn(
+            `[Ollama] Fallback non-stream response also returned no content for model ${runtimeModelId}`,
+          );
+        }
+      }
     } catch (error) {
       this.outputChannel.exception('[Ollama] Chat response failed', error);
+
+      if (isCloudModel && this.isThinkingInternalServerError(error) && !token.isCancellationRequested) {
+        this.outputChannel.warn(
+          `[Ollama] Cloud model ${runtimeModelId} returned generic 500 after streaming retries; attempting non-stream rescue`,
+        );
+
+        const rescueBaseMessages = (ollamaMessages ?? []) as Message[];
+
+        const rescueAttempts: Array<{
+          label: string;
+          messages: Message[];
+          think: boolean;
+          tools: typeof tools;
+        }> = [
+          { label: 'reduced-context+think+tools', messages: this.buildReducedCloudRescueMessages(rescueBaseMessages), think: shouldThink, tools },
+          { label: 'reduced-context+think', messages: this.buildReducedCloudRescueMessages(rescueBaseMessages), think: shouldThink, tools: undefined },
+          { label: 'reduced-context', messages: this.buildReducedCloudRescueMessages(rescueBaseMessages), think: false, tools: undefined },
+          { label: 'full-context', messages: rescueBaseMessages, think: false, tools: undefined },
+        ];
+
+        for (const attempt of rescueAttempts) {
+          try {
+            const rescued = (await perRequestClient.chat({
+              model: runtimeModelId,
+              messages: attempt.messages,
+              stream: false,
+              ...(attempt.tools ? { tools: attempt.tools } : {}),
+              ...(attempt.think ? { think: true } : {}),
+            })) as ChatResponse;
+
+            const hasContent = rescued.message?.content || rescued.message?.thinking || rescued.message?.tool_calls?.length;
+            if (hasContent) {
+              this.outputChannel.info(
+                `[Ollama] Cloud non-stream rescue (${attempt.label}) succeeded for ${runtimeModelId}`,
+              );
+
+              if (rescued.message?.thinking) {
+                progress.report(new LanguageModelTextPart('\n\n\ud83d\udcad **Thinking**\n\n'));
+                progress.report(new LanguageModelTextPart(rescued.message.thinking));
+                progress.report(new LanguageModelTextPart('\n\n---\n\n'));
+              }
+
+              if (rescued.message?.content) {
+                progress.report(new LanguageModelTextPart(this.formatXmlLikeResponseForDisplay(rescued.message.content)));
+              }
+
+              if (rescued.message?.tool_calls && Array.isArray(rescued.message.tool_calls)) {
+                for (const toolCall of rescued.message.tool_calls) {
+                  const vsCodeId = this.generateToolCallId();
+                  const upstreamId =
+                    typeof (toolCall as { id?: unknown }).id === 'string'
+                      ? (toolCall as unknown as { id: string }).id
+                      : vsCodeId;
+                  this.mapToolCallId(vsCodeId, upstreamId);
+                  progress.report(
+                    new LanguageModelToolCallPart(
+                      vsCodeId,
+                      toolCall.function?.name || '',
+                      toolCall.function?.arguments || {},
+                    ),
+                  );
+                }
+              }
+
+              return;
+            }
+          } catch (rescueError) {
+            this.outputChannel.warn(
+              `[Ollama] Cloud non-stream rescue (${attempt.label}) failed for ${runtimeModelId}: ${String(rescueError)}`,
+            );
+          }
+        }
+      }
 
       const isCrashError = error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
       if (isCrashError) {
@@ -579,10 +813,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
    */
   private toOllamaMessages(
     messages: readonly LanguageModelChatRequestMessage[],
+    supportsVision = true,
   ): Parameters<typeof this.client.chat>[0]['messages'] {
     const ollamaMessages: Parameters<typeof this.client.chat>[0]['messages'] = [];
     const XML_CONTEXT_TAG_RE = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>[\s\S]*?<\/\1>/gi;
     const systemContextParts: string[] = [];
+    let strippedImageCount = 0;
 
     for (const msg of messages) {
       const role = msg.role === LanguageModelChatMessageRole.User ? 'user' : 'assistant';
@@ -596,8 +832,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         if (part instanceof LanguageModelTextPart) {
           textContent += part.value;
         } else if (part instanceof LanguageModelDataPart) {
-          const base64Data = Buffer.from(part.data).toString('base64');
-          images.push(base64Data);
+          if (supportsVision) {
+            const base64Data = Buffer.from(part.data).toString('base64');
+            images.push(base64Data);
+          } else {
+            strippedImageCount++;
+          }
         } else if (part instanceof LanguageModelToolCallPart) {
           ollamaMsg.tool_calls = ollamaMsg.tool_calls || [];
           (ollamaMsg.tool_calls as Record<string, unknown>[]).push({
@@ -689,6 +929,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         role: 'system',
         content: dedupedContextParts.join('\n\n'),
       } as never);
+    }
+
+    if (strippedImageCount > 0) {
+      this.outputChannel.debug?.(
+        `[Ollama] Stripped ${strippedImageCount} image(s) from messages (model does not support vision)`,
+      );
     }
 
     return ollamaMessages;
@@ -820,7 +1066,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
  * Regex pattern for models that support extended thinking / reasoning.
  * Used as a fallback when the /api/show capabilities array is not yet cached.
  */
-const THINKING_MODEL_PATTERN = /qwen3|qwq|deepseek-?r1|cogito|phi\d+-reasoning/i;
+const THINKING_MODEL_PATTERN = /qwen3|qwq|deepseek-?r1|cogito|phi\d+-reasoning|kimi|thinking/i;
 
 export function isThinkingModelId(modelId: string): boolean {
   return THINKING_MODEL_PATTERN.test(modelId);

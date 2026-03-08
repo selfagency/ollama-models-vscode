@@ -17,6 +17,7 @@ import {
 } from 'vscode';
 import { fetchModelCapabilities, getCloudOllamaClient, type ModelCapabilities } from './client.js';
 import type { DiagnosticsLogger } from './diagnostics.js';
+import { isThinkingModelId } from './provider.js';
 
 /**
  * Tree item representing a pane or model in the sidebar
@@ -107,17 +108,30 @@ function createThemeIcon(id: string): ThemeIcon {
  *   llama2, llama3 → llama
  *   qwen:7b → qwen
  */
+/** Atomic multi-token family prefixes that must not be split at dashes. */
+const FAMILY_EXCEPTIONS = ['gpt-oss', 'open-orca'];
+
 function extractModelFamily(modelName: string): string {
   // Remove everything after colon if present
   const baseName = modelName.split(':')[0];
+
+  // Check multi-token family exceptions first (e.g. gpt-oss-*, open-orca-*)
+  const baseNameLower = baseName.toLowerCase();
+  for (const exception of FAMILY_EXCEPTIONS) {
+    if (baseNameLower === exception || baseNameLower.startsWith(`${exception}-`)) {
+      return exception;
+    }
+  }
 
   // Any dashed family/variant naming (command-r, deepseek-v3.2) groups by prefix.
   const firstDash = baseName.indexOf('-');
   if (firstDash > 0) {
     const prefix = baseName.slice(0, firstDash);
     // Normalize numeric family prefixes (qwen3 -> qwen, qwen3.5 -> qwen)
+    // but preserve short alphanumeric prefixes like 'r1' where stripping
+    // digits would leave a single character.
     const normalizedPrefix = prefix.replace(/[\d.]+$/, '');
-    return normalizedPrefix || prefix;
+    return (normalizedPrefix.length > 1 ? normalizedPrefix : prefix) || prefix;
   }
 
   // Trailing numeric version naming (phi3.5, llama2) groups by alpha prefix.
@@ -206,10 +220,18 @@ function buildLocalModelTooltip(
   const processor = running?.processor ?? (running ? 'Active' : 'Not running');
   const until = formatRelativeFromNow(running?.durationMs);
   const sizeText = formatSizeForTooltip(size);
-  const lines = [`${modelName}`];
-  if (description) lines.push('', description);
-  lines.push('', `🧠 ${modelName}`, `🆔 ${id}`, `🏋️ ${sizeText}`, `⚙️ ${processor}`, `⏱️ ${until}`);
+  const lines = [`🤖 ${modelName}`, `🆔 ${id}`, `🏋️ ${sizeText}`, `⚙️ ${processor}`, `⏱️ ${until}`];
+  if (description) lines.push(description);
   return lines.join('\n');
+}
+
+function buildCapabilityLines(caps: { thinking?: boolean; tools?: boolean; vision?: boolean; embedding?: boolean }): string[] {
+  const lines: string[] = [];
+  if (caps.thinking) lines.push('🧠 Thinking');
+  if (caps.tools) lines.push('🛠️ Tools');
+  if (caps.vision) lines.push('👁️ Vision');
+  if (caps.embedding) lines.push('🧩 Embedding');
+  return lines;
 }
 
 function getLibraryModelUrl(modelName: string): string {
@@ -223,7 +245,7 @@ function getLibraryModelUrl(modelName: string): string {
 async function fetchModelPagePreview(
   modelName: string,
   timeoutMs = 8000,
-): Promise<{ title: string; description: string }> {
+): Promise<{ title: string; description: string; capabilities: { thinking: boolean; tools: boolean; vision: boolean; embedding: boolean } }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const url = getLibraryModelUrl(modelName);
@@ -244,7 +266,15 @@ async function fetchModelPagePreview(
 
     const title = titleMatch?.[1]?.trim() || modelName;
     const description = descMatch?.[1]?.trim() || 'No description available from the library page.';
-    return { title, description };
+
+    const capabilities = {
+      thinking: /\bThinking\b/i.test(html) || isThinkingModelId(modelName),
+      tools: /\bTools\b/i.test(html),
+      vision: /\bVision\b/i.test(html),
+      embedding: /\bEmbedding\b/i.test(html),
+    };
+
+    return { title, description, capabilities };
   } finally {
     clearTimeout(timeout);
   }
@@ -293,7 +323,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       if (!this.grouped) {
         const filterLower = this.filterText.toLowerCase();
         return models
-          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))))
           .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
       }
 
@@ -307,7 +337,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           ([familyName, familyModels]) =>
             !filterLower ||
             familyName.toLowerCase().includes(filterLower) ||
-            familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+            familyModels.some(m => m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))),
         )
         .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -389,17 +419,18 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
 
           const appendBadges = (caps: ModelCapabilities) => {
             const badges: string[] = [];
-            if (caps.toolCalling) badges.push('tools');
-            if (caps.imageInput) badges.push('vision');
+            if (caps.thinking || isThinkingModelId(model.name)) badges.push('🧠');
+            if (caps.toolCalling) badges.push('🛠️');
+            if (caps.imageInput) badges.push('👁️');
+            if (caps.embedding) badges.push('🧩');
             if (badges.length === 0) {
               return;
             }
 
-            const badgeStr = badges.map(b => `[${b}]`).join(' ');
+            const badgeStr = badges.join(' ');
             const existing = (item.description ?? '').toString();
-            const knownBadgePattern = badges.map(b => `\\[${b}\\]`).join('|');
-            const stripRe = new RegExp(`\\s*(${knownBadgePattern})(\\s*(${knownBadgePattern}))*\\s*$`, 'i');
-            const cleaned = existing.replace(stripRe, '').trim();
+            // Strip any prior emoji badges before re-appending
+            const cleaned = existing.replace(/\s*(?:🧠|🛠️|👁️|🧩)(?:\s+(?:🧠|🛠️|👁️|🧩))*\s*$/, '').trim();
             item.description = cleaned ? `${cleaned} ${badgeStr}` : badgeStr;
           };
 
@@ -711,11 +742,23 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
       return models;
     }
 
-    // Flat mode: return all library models sorted A-Z
+    // Flat mode: return all library models sorted A-Z (non-collapsible)
     if (!this.grouped) {
       const filterLower = this.filterText.toLowerCase();
+      const localNames = this.getLocalModelNames();
       return models
-        .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+        .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))))
+        .map(m => {
+          m.collapsibleState = TreeItemCollapsibleState.None;
+          // Show check icon for installed models
+          const isInstalled = Array.from(localNames).some(
+            local => local === m.label || local.startsWith(`${m.label}:`),
+          );
+          if (isInstalled) {
+            m.iconPath = createThemeIcon('check');
+          }
+          return m;
+        })
         .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
     }
 
@@ -729,16 +772,21 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
         ([familyName, familyModels]) =>
           !filterLower ||
           familyName.toLowerCase().includes(filterLower) ||
-          familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+          familyModels.some(m => m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))),
       )
       .sort((a, b) => a[0].localeCompare(b[0]));
 
-    // Always create explicit family parent groups.
+    // Promote single-child groups: if a family has only one model, show it
+    // directly at top level (library items are always expandable via variants).
     const result: ModelTreeItem[] = [];
     for (const [familyName, familyModels] of filteredEntries) {
-      const groupItem = new ModelTreeItem(familyName, 'model-group');
-      groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
-      result.push(groupItem);
+      if (familyModels.length === 1) {
+        result.push(familyModels[0]);
+      } else {
+        const groupItem = new ModelTreeItem(familyName, 'model-group');
+        groupItem.tooltip = `${familyName} family (${familyModels.length} models)`;
+        result.push(groupItem);
+      }
     }
     return result;
   }
@@ -883,10 +931,16 @@ export class LibraryModelsProvider implements TreeDataProvider<ModelTreeItem>, D
     const items = sortedNames.map(name => {
       const item = new ModelTreeItem(name, 'library-model');
       item.tooltip = `Library model: ${name}`;
-      // Fetch description asynchronously
+      // Fetch description and capabilities asynchronously
       void fetchModelPagePreview(name).then(
         preview => {
-          item.tooltip = preview.description;
+          const tooltipLines = [`🤖 ${name}`];
+          const capLines = buildCapabilityLines(preview.capabilities);
+          if (capLines.length > 0) {
+            tooltipLines.push(...capLines);
+          }
+          if (preview.description) tooltipLines.push(preview.description);
+          item.tooltip = tooltipLines.join('\n');
           this.treeChangeEmitter.fire(item);
         },
         () => {
@@ -1019,7 +1073,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       if (!this.grouped) {
         const filterLower = this.filterText.toLowerCase();
         return models
-          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower)))
+          .filter(m => m.type !== 'status' && (!filterLower || m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))))
           .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
       }
 
@@ -1033,7 +1087,7 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           ([familyName, familyModels]) =>
             !filterLower ||
             familyName.toLowerCase().includes(filterLower) ||
-            familyModels.some(m => m.label.toLowerCase().includes(filterLower)),
+            familyModels.some(m => m.label.toLowerCase().includes(filterLower) || (typeof m.tooltip === 'string' && m.tooltip.toLowerCase().includes(filterLower))),
         )
         .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -1261,6 +1315,22 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         ),
       ];
 
+      // Build a map of capabilities per model from the catalog HTML.
+      // Each model card contains capability labels like "Tools", "Vision", etc.
+      const cloudCapabilities = new Map<string, Set<string>>();
+      const capBlockRe = /href="\/library\/([^"?#:]+)"[^]*?(?=href="\/library\/|$)/gi;
+      for (const block of html.matchAll(capBlockRe)) {
+        const name = typeof block[1] === 'string' ? decodeURIComponent(block[1]).trim() : '';
+        if (!name) continue;
+        const caps = new Set<string>();
+        const blockText = block[0];
+        if (/\bTools\b/i.test(blockText)) caps.add('tools');
+        if (/\bVision\b/i.test(blockText)) caps.add('vision');
+        if (/\bThinking\b/i.test(blockText)) caps.add('thinking');
+        if (/\bEmbedding\b/i.test(blockText)) caps.add('embedding');
+        cloudCapabilities.set(name, caps);
+      }
+
       const items = cloudModelNames
         .map(fullName => {
           const baseName = fullName.split(':')[0];
@@ -1274,7 +1344,48 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
             runningInfo?.size,
             runningInfo?.durationMs,
           );
-          item.tooltip = `Cloud model: ${fullName}`;
+          // Add capability emoji badges
+          const caps = cloudCapabilities.get(fullName);
+          const isThinking = caps?.has('thinking') || isThinkingModelId(fullName);
+          const hasTools = caps?.has('tools') ?? false;
+          const hasVision = caps?.has('vision') ?? false;
+          const hasEmbedding = caps?.has('embedding') ?? false;
+
+          const badges: string[] = [];
+          if (isThinking) badges.push('🧠');
+          if (hasTools) badges.push('🛠️');
+          if (hasVision) badges.push('👁️');
+          if (hasEmbedding) badges.push('🧩');
+          if (badges.length > 0) {
+            const existing = (item.description ?? '').toString();
+            const badgeStr = badges.join(' ');
+            item.description = existing ? `${existing} ${badgeStr}` : badgeStr;
+          }
+
+          // Build expanded tooltip (matches local model format)
+          const sizeText = formatSizeForTooltip(runningInfo?.size);
+          const tooltipLines = [`🤖 ${fullName}`, `🏋️ ${sizeText}`];
+          if (isRunning) {
+            const until = formatRelativeFromNow(runningInfo?.durationMs);
+            tooltipLines.push(`⏱️ ${until}`);
+          }
+          const capLines = buildCapabilityLines({ thinking: isThinking, tools: hasTools, vision: hasVision, embedding: hasEmbedding });
+          if (capLines.length > 0) {
+            tooltipLines.push(...capLines);
+          }
+          item.tooltip = tooltipLines.join('\n');
+
+          // Fetch description asynchronously and append beneath details
+          void fetchModelPagePreview(fullName).then(
+            preview => {
+              if (preview.description) {
+                item.tooltip = `${item.tooltip}\n${preview.description}`;
+                this.treeChangeEmitter.fire(item);
+              }
+            },
+            () => { /* keep existing tooltip */ },
+          );
+
           return item;
         })
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -1626,35 +1737,47 @@ export function registerSidebar(
       const initialLocalGrouped = context.globalState.get<boolean>('ollama.localGrouped', true);
       localProvider.grouped = initialLocalGrouped;
       void commands.executeCommand('setContext', 'ollama.localGrouped', initialLocalGrouped);
-      return commands.registerCommand('ollama-copilot.toggleLocalGrouping', () => {
+      const toggleLocal = () => {
         localProvider.grouped = !localProvider.grouped;
         void context.globalState.update('ollama.localGrouped', localProvider.grouped);
         void commands.executeCommand('setContext', 'ollama.localGrouped', localProvider.grouped);
         localProvider.refresh();
-      });
+      };
+      return commands.registerCommand('ollama-copilot.toggleLocalGrouping', toggleLocal);
     })(),
+    commands.registerCommand('ollama-copilot.toggleLocalGroupingToTree', () => {
+      void commands.executeCommand('ollama-copilot.toggleLocalGrouping');
+    }),
     (() => {
       const initialCloudGrouped = context.globalState.get<boolean>('ollama.cloudGrouped', true);
       cloudProvider.grouped = initialCloudGrouped;
       void commands.executeCommand('setContext', 'ollama.cloudGrouped', initialCloudGrouped);
-      return commands.registerCommand('ollama-copilot.toggleCloudGrouping', () => {
+      const toggleCloud = () => {
         cloudProvider.grouped = !cloudProvider.grouped;
         void context.globalState.update('ollama.cloudGrouped', cloudProvider.grouped);
         void commands.executeCommand('setContext', 'ollama.cloudGrouped', cloudProvider.grouped);
         cloudProvider.refresh();
-      });
+      };
+      return commands.registerCommand('ollama-copilot.toggleCloudGrouping', toggleCloud);
     })(),
+    commands.registerCommand('ollama-copilot.toggleCloudGroupingToTree', () => {
+      void commands.executeCommand('ollama-copilot.toggleCloudGrouping');
+    }),
     (() => {
       const initialLibraryGrouped = context.globalState.get<boolean>('ollama.libraryGrouped', true);
       libraryProvider.grouped = initialLibraryGrouped;
       void commands.executeCommand('setContext', 'ollama.libraryGrouped', initialLibraryGrouped);
-      return commands.registerCommand('ollama-copilot.toggleLibraryGrouping', () => {
+      const toggleLibrary = () => {
         libraryProvider.grouped = !libraryProvider.grouped;
         void context.globalState.update('ollama.libraryGrouped', libraryProvider.grouped);
         void commands.executeCommand('setContext', 'ollama.libraryGrouped', libraryProvider.grouped);
         libraryProvider.refresh();
-      });
+      };
+      return commands.registerCommand('ollama-copilot.toggleLibraryGrouping', toggleLibrary);
     })(),
+    commands.registerCommand('ollama-copilot.toggleLibraryGroupingToTree', () => {
+      void commands.executeCommand('ollama-copilot.toggleLibraryGrouping');
+    }),
     commands.registerCommand('ollama-copilot.refreshSidebar', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLocalModels', () => handleRefreshLocalModels(localProvider)),
     commands.registerCommand('ollama-copilot.refreshLibrary', () => handleRefreshLibrary(libraryProvider)),

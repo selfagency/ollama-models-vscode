@@ -3,17 +3,17 @@ name: Tests
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
     paths:
-      - 'src/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   pull_request:
     branches: [main]
     paths:
-      - 'src/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   workflow_dispatch:
 
 permissions:
@@ -66,8 +66,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -113,19 +113,24 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.ollama
-          key: ${{ runner.os }}-ollama-llama3.2:1b
+          key: ${{ runner.os }}-ollama-tinyllama-qwen2.5-0.5b
           restore-keys: |
             ${{ runner.os }}-ollama-
 
-      - name: Pull Ollama model
-        run: ollama pull llama3.2:1b
+      - name: Pull Ollama models
+        run: |
+          ollama pull tinyllama
+          ollama pull qwen2.5:0.5b
         shell: bash
 
       - name: Run integration tests
         run: ./node_modules/.bin/task integration-tests
         env:
           CI: true
+          OLLAMA_TEST_MODEL: tinyllama
+          OLLAMA_TEST_TOOL_MODEL: qwen2.5:0.5b
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
 
       - name: Upload test artifacts on failure
         if: failure()

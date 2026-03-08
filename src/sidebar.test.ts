@@ -625,12 +625,9 @@ describe('LocalModelsProvider', () => {
     );
 
     const libraryProvider = new LibraryModelsProvider(undefined);
-    // getChildren() groups by family; llama3.2 -> family 'llama'
+    // getChildren() promotes single-child families; llama3.2 appears at top level
     const groups = await libraryProvider.getChildren();
-    const llamaGroup = groups.find((item: any) => item.label === 'llama');
-    expect(llamaGroup).toBeDefined();
-    const familyModels = await libraryProvider.getChildren(llamaGroup);
-    const parent = familyModels.find((item: any) => item.label === 'llama3.2');
+    const parent = groups.find((item: any) => item.label === 'llama3.2');
     expect(parent).toBeDefined();
     const children = await libraryProvider.getChildren(parent);
 
@@ -660,12 +657,9 @@ describe('LocalModelsProvider', () => {
     );
 
     const libraryProvider = new LibraryModelsProvider(undefined);
-    // getChildren() groups by family; llama3.2 -> family 'llama'
+    // getChildren() promotes single-child families; llama3.2 appears at top level
     const groups = await libraryProvider.getChildren();
-    const llamaGroup = groups.find((item: any) => item.label === 'llama');
-    expect(llamaGroup).toBeDefined();
-    const familyModels = await libraryProvider.getChildren(llamaGroup);
-    const parent = familyModels.find((item: any) => item.label === 'llama3.2');
+    const parent = groups.find((item: any) => item.label === 'llama3.2');
     expect(parent).toBeDefined();
 
     const children = await libraryProvider.getChildren(parent);
@@ -1596,7 +1590,7 @@ describe('Extracted command handlers', () => {
     const llamaModels = await localProvider.getChildren(models[0]);
     const item = llamaModels[0];
     expect(item.label).toBe('llama3-tools:latest');
-    expect(item.description).toContain('[tools]');
+    expect(item.description).toContain('🛠️');
     localProvider.dispose();
   });
 
@@ -2124,5 +2118,8 @@ describe('registerSidebar grouped/flat toggle commands', () => {
     expect(registeredIds).toContain('ollama-copilot.toggleLocalGrouping');
     expect(registeredIds).toContain('ollama-copilot.toggleCloudGrouping');
     expect(registeredIds).toContain('ollama-copilot.toggleLibraryGrouping');
+    expect(registeredIds).toContain('ollama-copilot.toggleLocalGroupingToTree');
+    expect(registeredIds).toContain('ollama-copilot.toggleCloudGroupingToTree');
+    expect(registeredIds).toContain('ollama-copilot.toggleLibraryGroupingToTree');
   });
 });

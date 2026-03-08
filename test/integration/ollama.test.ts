@@ -3,7 +3,8 @@
  *
  * Requirements:
  * - A running Ollama server on http://localhost:11434
- * - Local model: llama3.2:1b (smallest generally-available model)
+ * - Non-tool local model: tinyllama (fast default)
+ * - Tool-capable local model: qwen2.5:0.5b (separate capability check)
  * - Cloud model: any model with a `:cloud` or `-cloud` tag (optional — tests skip gracefully)
  *
  * Run with:  npx vitest run test/integration/ollama.test.ts
@@ -16,10 +17,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
-const LOCAL_MODEL = process.env.OLLAMA_TEST_MODEL ?? 'llama3.2:1b';
+const LOCAL_MODEL = process.env.OLLAMA_TEST_MODEL ?? 'tinyllama';
+const TOOL_MODEL = process.env.OLLAMA_TEST_TOOL_MODEL ?? 'qwen2.5:0.5b';
 
 function isCloudTag(tag: string): boolean {
   return tag === 'cloud' || tag.endsWith('-cloud');
+}
+
+function supportsToolsFromShow(info: unknown): boolean {
+  const response = info as Record<string, unknown>;
+  const capabilities = response.capabilities;
+  return Array.isArray(capabilities) && capabilities.some(cap => String(cap).toLowerCase().includes('tool'));
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +237,18 @@ describe('Local model embeddings', () => {
     expect(response.embeddings.length).toBeGreaterThan(0);
     expect(response.embeddings[0].length).toBeGreaterThan(0);
   }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// Tool-capable model checks
+// ---------------------------------------------------------------------------
+
+describe('Tool-capable model', () => {
+  it('is available and reports tool capability', async () => {
+    const info = await client.show({ model: TOOL_MODEL });
+    expect(info).toBeDefined();
+    expect(supportsToolsFromShow(info)).toBe(true);
+  }, 120_000);
 });
 
 // ---------------------------------------------------------------------------

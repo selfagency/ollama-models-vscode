@@ -140,19 +140,37 @@
       },
       {
         "command": "ollama-copilot.toggleLocalGrouping",
-        "title": "Toggle Local Models Grouping",
+        "title": "Show as Flat List",
+        "icon": "$(list-flat)",
+        "category": "Ollama"
+      },
+      {
+        "command": "ollama-copilot.toggleLocalGroupingToTree",
+        "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
       {
         "command": "ollama-copilot.toggleCloudGrouping",
-        "title": "Toggle Cloud Models Grouping",
+        "title": "Show as Flat List",
+        "icon": "$(list-flat)",
+        "category": "Ollama"
+      },
+      {
+        "command": "ollama-copilot.toggleCloudGroupingToTree",
+        "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
       {
         "command": "ollama-copilot.toggleLibraryGrouping",
-        "title": "Toggle Library Models Grouping",
+        "title": "Show as Flat List",
+        "icon": "$(list-flat)",
+        "category": "Ollama"
+      },
+      {
+        "command": "ollama-copilot.toggleLibraryGroupingToTree",
+        "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
@@ -393,7 +411,12 @@
         },
         {
           "command": "ollama-copilot.toggleLocalGrouping",
-          "when": "view == ollama-local-models",
+          "when": "view == ollama-local-models && ollama.localGrouped",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ollama-copilot.toggleLocalGroupingToTree",
+          "when": "view == ollama-local-models && !ollama.localGrouped",
           "group": "navigation@2"
         },
         {
@@ -418,7 +441,12 @@
         },
         {
           "command": "ollama-copilot.toggleLibraryGrouping",
-          "when": "view == ollama-library-models",
+          "when": "view == ollama-library-models && ollama.libraryGrouped",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ollama-copilot.toggleLibraryGroupingToTree",
+          "when": "view == ollama-library-models && !ollama.libraryGrouped",
           "group": "navigation@1"
         },
         {
@@ -448,7 +476,12 @@
         },
         {
           "command": "ollama-copilot.toggleCloudGrouping",
-          "when": "view == ollama-cloud-models",
+          "when": "view == ollama-cloud-models && ollama.cloudGrouped",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ollama-copilot.toggleCloudGroupingToTree",
+          "when": "view == ollama-cloud-models && !ollama.cloudGrouped",
           "group": "navigation@2"
         },
         {
