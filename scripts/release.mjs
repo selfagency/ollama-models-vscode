@@ -19,25 +19,20 @@ cd(ROOT);
 const version = argv._[0];
 const isPreRelease = argv['pre-release'] === true || argv.p === true;
 
-if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
+if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   console.error(
     isPreRelease
-      ? 'Usage: pnpm run release:pre <version>   (e.g. pnpm run release:pre 1.0.5-rc.1)'
-      : 'Usage: pnpm release <version>   (e.g. pnpm release 1.0.5)',
+      ? 'Usage: task prerelease -- <version>   (e.g. task prerelease -- 0.1.0)'
+      : 'Usage: task release -- <version>   (e.g. task release -- 1.0.0)',
   );
+  console.error('Note: VS Code Marketplace only supports major.minor.patch versions.');
   process.exit(1);
 }
 
-if (isPreRelease && !version.includes('-')) {
-  console.error('❌ Pre-release versions must include a semver pre-release suffix (e.g. 0.1.0-rc.1).');
-  process.exit(1);
-}
-if (!isPreRelease && version.includes('-')) {
-  console.error('❌ Use "task prerelease" for pre-release versions (versions with a semver suffix).');
-  process.exit(1);
-}
-
-const tag = `v${version}`;
+// Git tag gets a -pre suffix for pre-releases so the release workflow can detect
+// the pre-release flag without relying on a semver suffix in the version number.
+// package.json gets the plain major.minor.patch version the Marketplace requires.
+const tag = isPreRelease ? `v${version}-pre` : `v${version}`;
 
 // ---------------------------------------------------------------------------
 // Rollback state
