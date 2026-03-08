@@ -56,7 +56,7 @@ beforeAll(async () => {
   });
   cloudModelName = cloudEntry?.name;
 
-  // Validate cloud auth by trying a lightweight request with the API key.
+  // Validate cloud auth by trying a real cloud request (show doesn't require auth).
   const cloudApiKey = process.env.OLLAMA_CLOUD_API_KEY;
   if (cloudModelName && cloudApiKey) {
     try {
@@ -64,7 +64,13 @@ beforeAll(async () => {
         host: OLLAMA_HOST,
         headers: { Authorization: `Bearer ${cloudApiKey}` },
       });
-      await cloudClient.show({ model: cloudModelName });
+      await cloudClient.generate({
+        model: cloudModelName,
+        prompt: '',
+        stream: false,
+        keep_alive: 0,
+        options: { num_predict: 1 },
+      });
       cloudAuthValid = true;
     } catch {
       console.log(`Cloud auth validation failed for ${cloudModelName} — cloud tests will be skipped.`);
