@@ -2247,6 +2247,31 @@ export async function handleManageCloudApiKey(
 
 /**
  * Command handler: login to Ollama Cloud via terminal.
+ *
+ * ## Cloud authentication flow
+ *
+ * Ollama Cloud uses a session-based authentication model: the user logs in once
+ * with `ollama login` using their Ollama.com credentials. The CLI stores an
+ * opaque session token in the local Ollama config (typically `~/.ollama/`) and
+ * the running Ollama server presents it automatically on cloud API calls.
+ *
+ * No API key is handled by this extension. The extension obtains a cloud-aware
+ * Ollama client via `getCloudOllamaClient(context)` (see `src/client.ts`), which
+ * currently resolves to the same local Ollama server endpoint as the standard
+ * client — the server itself manages credential forwarding.
+ *
+ * Cloud model names carry a `:cloud` or `*-cloud` tag (e.g. `llama3.3:cloud`).
+ * `CloudModelsProvider` discovers available cloud models by:
+ * 1. Attempting to restore a cached catalog from `globalState` (version-gated).
+ * 2. If the cache is empty, fetching the live catalog from
+ *    `https://ollama.com/api/tags` (model names) and
+ *    `https://ollama.com/search?c=cloud` (capabilities: tools/vision/thinking).
+ * 3. Checking which cloud models are currently running via `ollama ps`.
+ * 4. If the catalog fetch fails or returns nothing, the tree shows a
+ *    "Login to Ollama Cloud" prompt that invokes this handler.
+ *
+ * The `handleManageCloudApiKey` command is a back-compat shim that also calls
+ * this handler, replacing the old API-key entry UI.
  */
 export function handleLoginToCloud(): void {
   const terminal = window.createTerminal({ name: 'Ollama Cloud Login' });

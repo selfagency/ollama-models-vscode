@@ -382,6 +382,13 @@ export async function handleChatRequest(
 
     try {
       // Convert VS Code messages to the plain Ollama format expected by the client.
+      //
+      // XML context tag extraction (mirrors the logic in OllamaChatModelProvider.toOllamaMessages):
+      // VS Code Copilot injects structured IDE context (<selection>, <file>, etc.) as leading XML
+      // tags in the first user message. These are extracted from the start of user message text
+      // only (stopping as soon as a tag does not begin at index 0), collected into systemContextParts,
+      // deduplicated by tag name (most-recent wins), then prepended as a single Ollama `system` message.
+      // This keeps IDE-injected context separate from the conversational user turn.
       const XML_CONTEXT_TAG_RE = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>[\s\S]*?<\/\1>/gi;
       const systemContextParts: string[] = [];
 

@@ -23,7 +23,9 @@ import {
 } from 'vscode';
 import { getCloudOllamaClient, getContextLengthOverride, getOllamaClient } from './client';
 import type { DiagnosticsLogger } from './diagnostics.js';
+import { reportError } from './errorHandler.js';
 import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
+import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
 
 const MODEL_LIST_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MODEL_INFO_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -129,7 +131,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
       return resolvedModels.length > 0 ? resolvedModels : this.cachedModelList;
     } catch (error) {
-      this.outputChannel.exception('[client] failed to fetch models', error);
+      reportError(this.outputChannel, 'Failed to fetch models', error, { showToUser: false });
       return this.cachedModelList;
     }
   }
@@ -396,22 +398,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     return is500Error && hasThinkingContext;
   }
 
-  private isToolsNotSupportedError(error: unknown): boolean {
-    return (
-      error instanceof Error && /does not support tools|error validating json schema|schemaerror/i.test(error.message)
-    );
-  }
-
-  private normalizeToolInputSchema(inputSchema: unknown): Record<string, unknown> {
-    if (inputSchema && typeof inputSchema === 'object' && !Array.isArray(inputSchema)) {
-      return inputSchema as Record<string, unknown>;
-    }
-
-    return {
-      type: 'object',
-      properties: {},
-    };
-  }
+  // normalizeToolParameters/isToolsNotSupportedError provided by src/toolUtils.ts
 
   private buildReducedCloudRescueMessages(messages: Message[]): Message[] {
     const system = messages.find(m => m.role === 'system');
@@ -471,7 +458,33 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   }
 
   /**
-   * Provide language model chat response
+   * Satisfy a VS Code Language Model API chat request by streaming through Ollama.
+   *
+   * ## Tool calling round-trip
+   *
+   * 1. `toOllamaMessages` converts the VS Code message history (including any prior
+   *    `LanguageModelToolCallPart` / `LanguageModelToolResultPart` entries) to the
+   *    Ollama wire format, translating VS Code tool-call IDs to the Ollama IDs via
+   *    `toolCallIdMap` so that multi-turn tool conversations stay consistent.
+   * 2. If the model supports native tool calling (`nativeToolCallingByModelId`) and
+   *    VS Code provided tools, they are serialised as Ollama `Tool` objects.
+   * 3. The chat stream is consumed chunk-by-chunk. `thinking` tokens are emitted
+   *    first (behind a 💭 heading), followed by content. When a chunk contains
+   *    `tool_calls` each one is emitted as a `LanguageModelToolCallPart` with a
+   *    fresh VS Code ID mapped back to the model's upstream call ID.
+   * 4. VS Code then invokes the referenced tools and appends the results as
+   *    `LanguageModelToolResultPart` messages before calling this method again,
+   *    restarting the cycle from step 1.
+   *
+   * ## Retry / rescue ladder
+   *
+   * - Thinking not supported → retry without `think: true`, evict from
+   *   `thinkingModels`, add to `nonThinkingModels`.
+   * - Tools not supported (`isToolsNotSupportedError`) → retry without tools.
+   * - Empty stream (`!emittedOutput`) → non-stream fallback with `stream: false`.
+   * - Cloud 500 after all stream retries → 4-attempt non-stream rescue ladder
+   *   (reduced-context+think+tools → reduced-context+think → reduced-context →
+   *   full-context).
    */
   async provideLanguageModelChatResponse(
     model: LanguageModelChatInformation,
@@ -497,7 +510,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         function: {
           name: tool.name,
           description: tool.description || '',
-          parameters: this.normalizeToolInputSchema(tool.inputSchema),
+          parameters: normalizeToolParameters(tool.inputSchema),
         },
       }));
     }
@@ -551,7 +564,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             if (
               isCloudModel &&
               tools &&
-              (this.isThinkingInternalServerError(retryError) || this.isToolsNotSupportedError(retryError))
+              (this.isThinkingInternalServerError(retryError) || isToolsNotSupportedError(retryError))
             ) {
               this.outputChannel.warn(
                 `[client] cloud model ${runtimeModelId} failed with tools after think retry; retrying without tools`,
@@ -573,7 +586,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             stream: true,
             ...(shouldThink ? { think: true } : {}),
           });
-        } else if (tools && this.isToolsNotSupportedError(innerError)) {
+        } else if (tools && isToolsNotSupportedError(innerError)) {
           this.outputChannel.warn(`[client] model ${runtimeModelId} rejected tools; retrying without tools`);
           response = await perRequestClient.chat({
             model: runtimeModelId,
@@ -697,7 +710,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         }
       }
     } catch (error) {
-      this.outputChannel.exception('[client] chat response failed', error);
+      reportError(this.outputChannel, 'Chat response failed', error, { showToUser: false });
 
       if (isCloudModel && this.isThinkingInternalServerError(error) && !token.isCancellationRequested) {
         this.outputChannel.warn(
@@ -821,7 +834,31 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
   }
 
   /**
-   * Convert VS Code messages to Ollama message format
+   * Convert a VS Code chat history to the Ollama wire format.
+   *
+   * ## XML context tag extraction
+   *
+   * VS Code Copilot prepends structured context to the *first* user message using
+   * XML-like tags (`<selection>…</selection>`, `<file>…</file>`, etc.). These are
+   * privileged context injected by the IDE — not arbitrary user text — and Ollama
+   * expects them as a `system` message rather than inline in the user turn.
+   *
+   * Algorithm:
+   * 1. For each user message, if the content starts with `<`, greedily consume
+   *    consecutive XML tags from the *very beginning* (index 0). As soon as the
+   *    regex match is not at position 0, extraction stops. This ensures only
+   *    leading IDE-injected blocks are elevated to system context; XML that
+   *    appears mid-message is left in the user turn as-is.
+   * 2. Extracted blocks from all turns are collected in `systemContextParts`.
+   * 3. The list is deduplicated by tag name (keeping the most-recent occurrence
+   *    per tag type) to prevent accumulating stale context across turns.
+   * 4. The deduplicated blocks are joined and **prepended** as a `system` message
+   *    at position 0 of the Ollama message array.
+   *
+   * ## Vision
+   *
+   * `LanguageModelDataPart` images are only included when `supportsVision` is
+   * true for the model. Stripped images are counted and logged.
    */
   private toOllamaMessages(
     messages: readonly LanguageModelChatRequestMessage[],
