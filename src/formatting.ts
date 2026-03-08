@@ -31,6 +31,7 @@ export function createXmlStreamFilter(): XmlStreamFilter {
     'selection',
     'file_context',
     'user',
+    'userRequest',
     'workspaces',
     'workspace',
     'session',
@@ -40,6 +41,11 @@ export function createXmlStreamFilter(): XmlStreamFilter {
     'userData',
     'profile',
     'history',
+    'system',
+    'systemPrompt',
+    'chatHistory',
+    'contextWindow',
+    'injectedContext',
   ]);
   const parser = new Saxophone();
   let skipDepth = 0;

@@ -1398,12 +1398,8 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
       .fn()
       // Tool round request (stream=false) fails due to schema error
       .mockRejectedValueOnce(unsupportedToolsError)
-      // Streaming fallback succeeds without tools
-      .mockResolvedValueOnce(
-        (async function* () {
-          yield { message: { content: 'hello after fallback' }, done: true };
-        })(),
-      );
+      // XML fallback request (stream=false) returns plain text — no XML tool calls
+      .mockResolvedValueOnce({ message: { content: 'hello after fallback' }, done: true });
 
     const mockClient = { chat };
     const request = {
@@ -1428,7 +1424,9 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
         ],
       }),
     );
-    expect(chat).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: true }));
+    // XML fallback: stream=false, no tools key
+    expect(chat).toHaveBeenNthCalledWith(2, expect.objectContaining({ stream: false }));
+    expect(chat.mock.calls[1][0]).not.toHaveProperty('tools');
     expect(markdown).toHaveBeenCalledWith(expect.stringContaining('hello after fallback'));
   });
 });

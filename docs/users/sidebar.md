@@ -20,10 +20,10 @@ Each model item shows capability indicators:
 
 | Badge | Meaning                     |
 | ----- | --------------------------- |
-| 🧠     | Thinking / chain-of-thought |
-| 🛠     | Tool calling                |
-| 👁     | Vision (image input)        |
-| 🧩     | Embedding model             |
+| 🧠    | Thinking / chain-of-thought |
+| 🛠    | Tool calling                |
+| 👁    | Vision (image input)        |
+| 🧩    | Embedding model             |
 
 ### Status Indicators
 
@@ -34,10 +34,10 @@ Each model item shows capability indicators:
 
 Right side of each running or stopped model item:
 
-| Button   | When    | Action                   |
-| -------- | ------- | ------------------------ |
-| ▶ Start  | Stopped | Load model into memory   |
-| ⏹ Stop   | Running | Unload model from memory |
+| Button    | When    | Action                   |
+| --------- | ------- | ------------------------ |
+| ▶ Start   | Stopped | Load model into memory   |
+| ⏹ Stop    | Running | Unload model from memory |
 | 🗑 Delete | Stopped | Remove model from disk   |
 
 Running models cannot be deleted — stop them first.
@@ -46,11 +46,11 @@ Running models cannot be deleted — stop them first.
 
 | Button         | Action                                 |
 | -------------- | -------------------------------------- |
-| 🔑              | Manage auth token for remote instances |
-| 🔍 Filter       | Type to filter by model name           |
+| 🔑             | Manage auth token for remote instances |
+| 🔍 Filter      | Type to filter by model name           |
 | ✕ Clear filter | Remove active filter                   |
 | ⊞ / ⊟          | Toggle grouped tree / flat list        |
-| 🔄 Refresh      | Reload local model list                |
+| 🔄 Refresh     | Reload local model list                |
 | ⊖ Collapse all | Collapse all family groups             |
 
 The list auto-refreshes every 30 seconds (configurable via `ollama.localModelRefreshInterval`).
@@ -67,11 +67,11 @@ Click the **Login** (👤) button in the panel header to authenticate. This trig
 
 ### Inline Buttons
 
-| Button   | When    | Action                             |
-| -------- | ------- | ---------------------------------- |
+| Button    | When    | Action                             |
+| --------- | ------- | ---------------------------------- |
 | 🔗        | Always  | Open the model's page on ollama.ai |
-| ▶ Run    | Stopped | Activate the cloud model           |
-| ⏹ Stop   | Running | Deactivate the cloud model         |
+| ▶ Run     | Stopped | Activate the cloud model           |
+| ⏹ Stop    | Running | Deactivate the cloud model         |
 | 🗑 Delete | Stopped | Remove from your account           |
 
 Cloud model names end with `:cloud` to distinguish them from local variants.
@@ -94,12 +94,12 @@ Variants already installed locally show a **✓** checkmark.
 
 | Button     | Action                       |
 | ---------- | ---------------------------- |
-| 🔍 Filter   | Type to filter by model name |
+| 🔍 Filter  | Type to filter by model name |
 | ✕ Clear    | Remove active filter         |
 | ⊞ / ⊟      | Toggle grouped / flat view   |
-| 🔄 Refresh  | Re-fetch from ollama.ai      |
+| 🔄 Refresh | Re-fetch from ollama.ai      |
 | ⊖ Collapse | Collapse all families        |
-| 🔗          | Open model page on ollama.ai |
+| 🔗         | Open model page on ollama.ai |
 
 The library is fetched on startup. Use the refresh button or wait for the scheduled refresh (configurable via `ollama.libraryRefreshInterval`, default 6 hours).
 

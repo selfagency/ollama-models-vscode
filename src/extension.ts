@@ -8,11 +8,16 @@ import { getCloudOllamaClient, getOllamaClient, testConnection } from './client.
 import { OllamaInlineCompletionProvider } from './completions.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
-import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
+import { createXmlStreamFilter, formatXmlLikeResponseForDisplay, stripXmlContextTags } from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
-import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
+import {
+  buildXmlToolSystemPrompt,
+  extractXmlToolCalls,
+  isToolsNotSupportedError,
+  normalizeToolParameters,
+} from './toolUtils.js';
 
 const LANGUAGE_MODEL_VENDOR = 'selfagency-opilot';
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:';
@@ -446,6 +451,7 @@ export async function handleChatRequest(
 
       // Tool invocation loop — only when VS Code tools and an invocation token are available.
       const vscodeLmTools = vscode.lm.tools ?? [];
+      let useXmlFallback = false;
       if (vscodeLmTools.length > 0 && request.toolInvocationToken) {
         const ollamaTools: Tool[] = vscodeLmTools.map(t => ({
           type: 'function',
@@ -477,6 +483,7 @@ export async function handleChatRequest(
               outputChannel?.warn(
                 `[client] disabling tools for @ollama request on model ${modelId}: ${String(toolError)}`,
               );
+              useXmlFallback = true;
               break;
             }
             throw toolError;
@@ -486,7 +493,7 @@ export async function handleChatRequest(
           if (!toolCalls?.length) {
             // No tool invocations needed — render the response text and exit.
             if (roundResponse.message.content) {
-              stream.markdown(formatXmlLikeResponseForDisplay(roundResponse.message.content));
+              stream.markdown(formatXmlLikeResponseForDisplay(stripXmlContextTags(roundResponse.message.content)));
             }
             return;
           }
@@ -525,6 +532,83 @@ export async function handleChatRequest(
           }
         }
         // MAX_TOOL_ROUNDS reached — fall through to the streaming pass below.
+      }
+
+      if (useXmlFallback && request.toolInvocationToken) {
+        outputChannel?.info(`[client] attempting XML tool call fallback for model ${modelId}`);
+        const toolNames = new Set(vscodeLmTools.map(t => t.name));
+        const xmlSystemPrompt = buildXmlToolSystemPrompt(vscodeLmTools);
+        const existingSystem = (ollamaMessages as Message[]).filter(m => m.role === 'system');
+        const nonSystem = (ollamaMessages as Message[]).filter(m => m.role !== 'system');
+        const xmlConversation: Message[] = [
+          ...existingSystem,
+          { role: 'system', content: xmlSystemPrompt },
+          ...nonSystem,
+        ];
+
+        const MAX_XML_ROUNDS = 5;
+        let correctedOnce = false;
+        for (let xmlRound = 0; xmlRound < MAX_XML_ROUNDS; xmlRound++) {
+          if (token.isCancellationRequested) return;
+
+          const xmlResponse = (await effectiveClient.chat({
+            model: modelId,
+            messages: xmlConversation,
+            stream: false,
+          })) as ChatResponse;
+
+          const responseText = xmlResponse.message.content ?? '';
+          const xmlToolCalls = extractXmlToolCalls(responseText, toolNames);
+
+          if (!xmlToolCalls.length) {
+            if (!correctedOnce && !responseText.trim() && xmlRound < MAX_XML_ROUNDS - 1) {
+              correctedOnce = true;
+              xmlConversation.push({ role: 'assistant', content: responseText });
+              xmlConversation.push({
+                role: 'user',
+                content:
+                  `Your previous response was empty. If you need information, emit a single XML tool call — no markdown fences, no prose. ` +
+                  `If you already have enough information, answer in plain text. Available tools: ${[...toolNames].join(', ')}.`,
+              });
+              continue;
+            }
+            if (responseText.trim()) {
+              stream.markdown(formatXmlLikeResponseForDisplay(stripXmlContextTags(responseText)));
+            }
+            return;
+          }
+
+          xmlConversation.push({ role: 'assistant', content: responseText });
+          // The XML system prompt instructs models to call ONE tool per response.
+          // If a model emits multiple tool tags, execute only the first to honour
+          // that contract and avoid confusing follow-up context.
+          const [xmlToolCall] = xmlToolCalls;
+          if (xmlToolCalls.length > 1) {
+            outputChannel?.warn(
+              `[client] XML fallback extracted ${xmlToolCalls.length} tool calls; executing only the first (${xmlToolCall.name}) to comply with 'ONE tool per response' contract.`,
+            );
+          }
+          let resultText: string;
+          try {
+            const result = await vscode.lm.invokeTool(
+              xmlToolCall.name,
+              { input: xmlToolCall.parameters, toolInvocationToken: request.toolInvocationToken! },
+              token,
+            );
+            resultText = result.content
+              .filter((c): c is vscode.LanguageModelTextPart => c instanceof vscode.LanguageModelTextPart)
+              .map(c => c.value)
+              .join('');
+          } catch (invokeError) {
+            resultText = invokeError instanceof Error ? invokeError.message : 'Tool execution failed';
+          }
+          // Use 'user' role for tool results in the XML fallback path — models that fail
+          // JSON function calling have no training data for the 'tool' role either.
+          xmlConversation.push({ role: 'user', content: `[Tool result: ${xmlToolCall.name}]\n${resultText}` });
+
+          correctedOnce = false;
+        }
+        // MAX_XML_ROUNDS exhausted — fall through to the streaming pass below.
       }
 
       const shouldThinkInitial = isThinkingModelId(modelId);

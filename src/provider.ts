@@ -24,7 +24,7 @@ import {
 import { getCloudOllamaClient, getContextLengthOverride, getOllamaClient } from './client';
 import type { DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
-import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
+import { createXmlStreamFilter, formatXmlLikeResponseForDisplay, stripXmlContextTags } from './formatting';
 import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
 
 const MODEL_LIST_REFRESH_MIN_INTERVAL_MS = 5_000;
@@ -699,7 +699,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             progress.report(new LanguageModelTextPart('\n\n---\n\n'));
           }
           // Non-stream fallback is complete text; safe to format XML-like blocks.
-          progress.report(new LanguageModelTextPart(formatXmlLikeResponseForDisplay(fallback.message.content)));
+          progress.report(
+            new LanguageModelTextPart(formatXmlLikeResponseForDisplay(stripXmlContextTags(fallback.message.content))),
+          );
           emittedOutput = true;
         }
 
@@ -771,7 +773,11 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
               if (rescued.message?.content) {
                 // Non-stream rescue is complete text; safe to format XML-like blocks.
-                progress.report(new LanguageModelTextPart(formatXmlLikeResponseForDisplay(rescued.message.content)));
+                progress.report(
+                  new LanguageModelTextPart(
+                    formatXmlLikeResponseForDisplay(stripXmlContextTags(rescued.message.content)),
+                  ),
+                );
               }
 
               if (rescued.message?.tool_calls && Array.isArray(rescued.message.tool_calls)) {
