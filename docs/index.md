@@ -11,8 +11,15 @@ title: Opilot — Ollama for GitHub Copilot VS Code Extension
 </p>
 
 <p align="center">
+  <a href="https://opilot.self.agency">📖 Docs</a> •
+  <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.opilot">🛒 Marketplace</a> •
+  <a href="https://github.com/selfagency/opilot">🐙 GitHub</a> •
+  <a href="https://github.com/selfagency/opilot/issues">🐛 Issues</a>
+</p>
+
+<p align="center">
   <a href="https://ollama.ai">🌐 Ollama</a> •
-  <a href="https://github.com/ollama/ollama">📖 GitHub Repo</a> •
+  <a href="https://github.com/ollama/ollama">📖 Ollama Repo</a> •
   <a href="https://ollama.ai/library">📚 Model Library</a>
 </p>
 

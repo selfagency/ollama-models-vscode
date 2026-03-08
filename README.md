@@ -13,8 +13,15 @@
 **Opilot** integrates the full Ollama ecosystem — local models, cloud models, and the Ollama model library — directly into VS Code's Copilot Chat interface. Your conversations never leave your machine when using local models, and you can switch between models without leaving the editor.
 
 <p align="center">
+  <a href="https://opilot.self.agency">📖 Docs</a> •
+  <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.opilot">🛒 Marketplace</a> •
+  <a href="https://github.com/selfagency/opilot">🐙 GitHub</a> •
+  <a href="https://github.com/selfagency/opilot/issues">🐛 Issues</a>
+</p>
+
+<p align="center">
   <a href="https://ollama.ai">🌐 Ollama</a> •
-  <a href="https://github.com/ollama/ollama">📖 GitHub Repo</a> •
+  <a href="https://github.com/ollama/ollama">📖 Ollama Repo</a> •
   <a href="https://ollama.ai/library">📚 Model Library</a>
 </p>
 
@@ -209,6 +216,15 @@ MIT License - See [LICENSE](LICENSE) for details.
 Maintained by [Daniel Sieradski](https://self.agency) ([@selfagency](https://github.com/selfagency)).
 
 ## 📚 Resources
+
+### Opilot
+
+- [Documentation](https://opilot.self.agency) - Full user and developer docs
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=selfagency.opilot) - Install from the marketplace
+- [GitHub Repository](https://github.com/selfagency/opilot) - Source code and releases
+- [GitHub Issues](https://github.com/selfagency/opilot/issues) - Bug reports and feature requests
+
+### Ollama
 
 - [Ollama GitHub](https://github.com/ollama/ollama) - Main Ollama repository
 - [Ollama Model Library](https://ollama.ai/library) - Browse available models
