@@ -618,10 +618,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
             thinkingStarted = true;
           }
-          progress.report(new LanguageModelTextPart(chunk.message.thinking));
         }
 
-        // Stream text chunks immediately as they arrive
         if (chunk.message?.content) {
           if (thinkingStarted && !contentStarted) {
             progress.report(new LanguageModelTextPart('\n\n---\n\n'));
@@ -629,11 +627,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           }
           this.outputChannel.debug?.(`[Ollama] Streaming chunk: ${chunk.message.content.substring(0, 50)}`);
           progress.report(new LanguageModelTextPart(this.formatXmlLikeResponseForDisplay(chunk.message.content)));
-        }
 
         // Handle tool calls
         if (chunk.message?.tool_calls && Array.isArray(chunk.message.tool_calls)) {
-          for (const toolCall of chunk.message.tool_calls) {
             const vsCodeId = this.generateToolCallId();
             const upstreamId =
               typeof (toolCall as { id?: unknown }).id === 'string'
@@ -653,7 +649,6 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
         // Some Ollama responses set done=true before the underlying stream closes.
         // Exit promptly so VS Code doesn't stay in a perpetual "waiting" state.
-        if (chunk.done === true) {
           break;
         }
       }
