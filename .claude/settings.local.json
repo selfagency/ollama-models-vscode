@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /Users/daniel/Developer/ollama-models-vscode/src/*.test.ts)",
+      "Read(//Users/daniel/Library/Mobile Documents/com~apple~CloudDocs/Claude/projects/-Users-daniel-Developer-ollama-models-vscode/2d107382-7791-4450-98dc-2c4fe670674f/tool-results/**)",
+      "mcp__io_github_wonderwhy-er_desktop-commander__get_file_info",
+      "mcp__io_github_wonderwhy-er_desktop-commander__read_file"
+    ]
+  }
+}
