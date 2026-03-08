@@ -72,6 +72,7 @@ tasks:
     cmds:
       - ollama pull smollm:360m
       - ollama pull qwen3.5:0.8b
+      - ollama pull kimi-k2.5:cloud
     silent: false
 
   integration-tests:
