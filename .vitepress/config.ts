@@ -1,5 +1,5 @@
 export default {
-  title: 'Opilot',
+  title: 'Opilot 🦙',
   titleTemplate: 'Opilot — Ollama for GitHub Copilot',
   description: 'Run Ollama models with full tool and vision support in GitHub Copilot Chat',
   base: '/',

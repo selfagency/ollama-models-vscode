@@ -18,7 +18,7 @@
 
 ## ✨ Features
 
-- 🧠 **All Models** - Use any model from the [Ollama Library](https://ollama.ai/library), including Cloud models (after `ollama login`), within the Copilot chat interface
+- 🦙 **All Models** - Use any model from the [Ollama Library](https://ollama.ai/library), including Cloud models (after `ollama login`), within the Copilot chat interface
 - 🛠️ **Model Management** - Pull, run, inspect, stop, and delete models from a custom Ollama sidebar
 - 💬 **Chat Participant** - Invoke `@ollama` directly in Copilot Chat for a dedicated, history-aware conversation with your local model
 - 📝 **Modelfile Management** - Create, edit, and build custom Ollama modelfiles with syntax highlighting, hover docs, and autocomplete

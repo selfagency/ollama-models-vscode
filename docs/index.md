@@ -12,9 +12,7 @@ title: Opilot — Ollama for GitHub Copilot VS Code Extension
 
 <div style="display:flex;flex-direction:row;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;">
 
-[![Tests](https://github.com/selfagency/opilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/opilot/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/selfagency/opilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/opilot)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/selfagency/opilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/opilot/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/selfagency/opilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/opilot) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
 
