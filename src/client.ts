@@ -53,6 +53,8 @@ export async function getCloudOllamaClient(context: ExtensionContext): Promise<O
 export interface ModelCapabilities {
   toolCalling: boolean;
   imageInput: boolean;
+  thinking: boolean;
+  embedding: boolean;
   maxInputTokens: number;
   maxOutputTokens: number;
 }
@@ -131,9 +133,19 @@ export async function fetchModelCapabilities(client: Ollama, modelId: string): P
     const maxInputTokens = contextLength;
     const maxOutputTokens = contextLength;
 
+    // Detect thinking support from capabilities array or template
+    const capabilitiesArr = (modelInfo as unknown as Record<string, unknown>).capabilities;
+    const capsArray = Array.isArray(capabilitiesArr) ? capabilitiesArr : [];
+    const thinking = capsArray.some((c: unknown) => typeof c === 'string' && c.toLowerCase() === 'thinking');
+
+    // Detect embedding models by checking for bert family or embedding-related families
+    const embedding = families.some(f => /bert|embed/i.test(f)) || (!modelInfo.template && families.length > 0);
+
     return {
       toolCalling,
       imageInput,
+      thinking,
+      embedding,
       maxInputTokens,
       maxOutputTokens,
     };
@@ -142,6 +154,8 @@ export async function fetchModelCapabilities(client: Ollama, modelId: string): P
     return {
       toolCalling: false,
       imageInput: false,
+      thinking: false,
+      embedding: false,
       maxInputTokens: 2048,
       maxOutputTokens: 2048,
     };

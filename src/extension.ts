@@ -3,6 +3,7 @@ import { promises as fsPromises } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ChatResponse, Message, Ollama, Tool } from 'ollama';
+import { formatXmlLikeResponseForDisplay } from './formatting';
 import * as vscode from 'vscode';
 import { getCloudOllamaClient, getOllamaClient, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
@@ -17,6 +18,24 @@ let builtInOllamaConflictPromptInProgress = false;
 
 function toRuntimeModelId(modelId: string): string {
   return modelId.startsWith(PROVIDER_MODEL_ID_PREFIX) ? modelId.slice(PROVIDER_MODEL_ID_PREFIX.length) : modelId;
+}
+
+function normalizeToolParameters(inputSchema: unknown): Tool['function']['parameters'] {
+  if (inputSchema && typeof inputSchema === 'object' && !Array.isArray(inputSchema)) {
+    return inputSchema as Tool['function']['parameters'];
+  }
+
+  // Ollama validates tools against JSON Schema object shape.
+  return {
+    type: 'object',
+    properties: {},
+  } as Tool['function']['parameters'];
+}
+
+function isToolsNotSupportedError(error: unknown): boolean {
+  return (
+    error instanceof Error && /does not support tools|error validating json schema|schemaerror/i.test(error.message)
+  );
 }
 
 function isSelectedAction(selection: unknown, actionLabel: string): boolean {
@@ -370,28 +389,41 @@ export async function handleChatRequest(
           function: {
             name: t.name,
             description: t.description ?? '',
-            parameters: t.inputSchema as Tool['function']['parameters'],
+            parameters: normalizeToolParameters(t.inputSchema),
           },
         }));
 
+        const shouldThinkInToolLoop = isThinkingModelId(modelId);
         const MAX_TOOL_ROUNDS = 10;
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           if (token.isCancellationRequested) {
             return;
           }
 
-          const roundResponse = await effectiveClient.chat({
-            model: modelId,
-            messages: ollamaMessages as Message[],
-            stream: false,
-            tools: ollamaTools,
-          });
+          let roundResponse: ChatResponse;
+          try {
+            roundResponse = (await effectiveClient.chat({
+              model: modelId,
+              messages: ollamaMessages as Message[],
+              stream: false,
+              tools: ollamaTools,
+              ...(shouldThinkInToolLoop ? { think: true } : {}),
+            })) as ChatResponse;
+          } catch (toolError) {
+            if (isToolsNotSupportedError(toolError)) {
+              outputChannel?.warn?.(
+                `[Ollama] Disabling tools for @ollama request on model ${modelId}: ${String(toolError)}`,
+              );
+              break;
+            }
+            throw toolError;
+          }
 
           const toolCalls = roundResponse.message.tool_calls;
           if (!toolCalls?.length) {
             // No tool invocations needed — render the response text and exit.
             if (roundResponse.message.content) {
-              stream.markdown(roundResponse.message.content);
+              stream.markdown(formatXmlLikeResponseForDisplay(roundResponse.message.content));
             }
             return;
           }
@@ -445,12 +477,21 @@ export async function handleChatRequest(
           ...(shouldThink ? { think: true } : {}),
         });
       } catch (chatError) {
-        if (
+        const supportsThinkingError =
           shouldThink &&
           chatError instanceof Error &&
           chatError.name === 'ResponseError' &&
-          chatError.message.toLowerCase().includes('does not support thinking')
-        ) {
+          chatError.message.toLowerCase().includes('does not support thinking');
+
+        if (supportsThinkingError) {
+          response = await effectiveClient.chat({
+            model: modelId,
+            messages: ollamaMessages as Message[],
+            stream: true,
+          });
+        } else if (isToolsNotSupportedError(chatError)) {
+          outputChannel?.warn?.(`[Ollama] Model ${modelId} rejected tools; retrying stream without tools/thinking`);
+          shouldThink = false;
           response = await effectiveClient.chat({
             model: modelId,
             messages: ollamaMessages as Message[],
@@ -483,6 +524,7 @@ export async function handleChatRequest(
             contentStarted = true;
           }
           outputChannel?.debug(`[Ollama] @ollama chunk: ${chunk.message.content.substring(0, 50)}`);
+          // Do not apply XML-like formatting per chunk: tags may span chunks.
           stream.markdown(chunk.message.content);
         }
 
