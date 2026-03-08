@@ -883,6 +883,10 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   dispose(): void {
     this.stopAutoRefresh();
     this.configListenerDisposable?.dispose();
+    if (this.refreshDebounceTimer) {
+      clearTimeout(this.refreshDebounceTimer);
+      this.refreshDebounceTimer = undefined;
+    }
   }
 
   /**

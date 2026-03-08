@@ -2300,3 +2300,275 @@ describe('registerSidebar grouped/flat toggle commands', () => {
     expect(registeredIds).toContain('ollama-copilot.toggleLibraryGroupingToTree');
   });
 });
+
+describe('Provider lifecycle and disposal', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('LocalModelsProvider.dispose() unregisters the config change listener', async () => {
+    vi.resetModules();
+
+    const configDispose = vi.fn();
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) { this.label = label; }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: configDispose })),
+      },
+    }));
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), ps: vi.fn().mockResolvedValue({ models: [] }), show: vi.fn() } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient);
+
+    provider.dispose();
+
+    expect(configDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('LocalModelsProvider.dispose() stops auto-refresh intervals', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) { this.label = label; }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: (key: string) => (key === 'localModelRefreshInterval' ? 1 : 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const onLocalModelsChanged = vi.fn();
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), ps: vi.fn().mockResolvedValue({ models: [] }) } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
+
+    // Dispose before the first auto-refresh interval fires (interval = 1s)
+    provider.dispose();
+
+    // Advance 5 seconds — auto-refresh should NOT fire after dispose
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(onLocalModelsChanged).not.toHaveBeenCalled();
+  });
+
+  it('LocalModelsProvider.dispose() cancels pending debounce timer before it fires', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) { this.label = label; }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const onLocalModelsChanged = vi.fn();
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), ps: vi.fn().mockResolvedValue({ models: [] }) } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
+
+    // Start a debounce (300ms)
+    provider.refresh();
+
+    // Dispose before debounce fires
+    provider.dispose();
+
+    // Advance past the 300ms debounce window
+    await vi.advanceTimersByTimeAsync(500);
+
+    // onLocalModelsChanged must NOT have been called (timer was cancelled)
+    expect(onLocalModelsChanged).not.toHaveBeenCalled();
+  });
+
+  it('CloudModelsProvider.dispose() stops auto-refresh intervals', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) { this.label = label; }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: (key: string) => (key === 'cloudModelRefreshInterval' ? 1 : 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, headers: { get: vi.fn().mockReturnValue('text/html') }, text: async () => '' }));
+
+    const { CloudModelsProvider } = await import('./sidebar.js');
+    const mockContext = {
+      secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
+      globalState: { get: vi.fn().mockReturnValue(undefined), update: vi.fn() },
+    } as unknown as ExtensionContext;
+
+    const cloudProvider = new CloudModelsProvider(mockContext);
+    const refreshSpy = vi.spyOn(cloudProvider, 'refresh');
+
+    cloudProvider.dispose();
+
+    // Advance several seconds — refresh should NOT be called by internal intervals after dispose
+    await vi.advanceTimersByTimeAsync(10000);
+
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
+  it('registerSidebar pushes provider dispose wrappers to context.subscriptions', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) { this.label = label; }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0), update: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    const { registerSidebar } = await import('./sidebar.js');
+
+    const pushedItems: unknown[] = [];
+    const mockContext = {
+      subscriptions: { push: (...items: unknown[]) => pushedItems.push(...items) },
+      secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
+      globalState: { get: vi.fn().mockReturnValue(undefined), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as unknown as Ollama;
+
+    registerSidebar(mockContext, mockClient);
+
+    // At least 3 dispose-wrapper items must be in subscriptions (for local, library, cloud providers)
+    const disposeWrappers = pushedItems.filter(
+      item => item !== null && typeof item === 'object' && typeof (item as { dispose?: unknown }).dispose === 'function',
+    );
+    expect(disposeWrappers.length).toBeGreaterThanOrEqual(3);
+  });
+});
