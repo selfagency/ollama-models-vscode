@@ -114,7 +114,7 @@ tasks:
 
   test-build-release:
     desc: Test, Build & Release
-    deps: [check-all, test-alle]
+    deps: [check-all, test-all]
     cmds:
       - task: release
     silent: false

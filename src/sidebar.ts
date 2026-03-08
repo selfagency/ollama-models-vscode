@@ -520,6 +520,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   grouped = true;
 
   private refreshIntervals: NodeJS.Timeout[] = [];
+  private configListenerDisposable?: Disposable;
   private localModelCapabilitiesCache = new Map<string, ModelCapabilities>();
   private localModelCapabilitiesInFlight = new Set<string>();
   private cachedLocalModelNames = new Set<string>();
@@ -533,6 +534,15 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
   ) {
     this.hydrateLocalCapabilitiesFromStorage();
     this.startAutoRefresh();
+
+    // Register config listener once — not inside startAutoRefresh() which can be called multiple times
+    this.configListenerDisposable = workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('ollama.localModelRefreshInterval')) {
+        this.logChannel?.debug('[client] ollama settings changed, restarting auto-refresh');
+        this.stopAutoRefresh();
+        this.startAutoRefresh();
+      }
+    });
   }
 
   private hydrateLocalCapabilitiesFromStorage(): void {
@@ -826,15 +836,6 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
       }, localRefreshSecs * 1000);
       this.refreshIntervals.push(localInterval);
     }
-
-    // Watch for settings changes and restart intervals
-    workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('ollama.localModelRefreshInterval')) {
-        this.logChannel?.debug('[client] ollama settings changed, restarting auto-refresh');
-        this.stopAutoRefresh();
-        this.startAutoRefresh();
-      }
-    });
   }
 
   /**
@@ -852,6 +853,7 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    */
   dispose(): void {
     this.stopAutoRefresh();
+    this.configListenerDisposable?.dispose();
   }
 
   /**

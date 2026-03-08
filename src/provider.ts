@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Ollama, type ChatResponse, type Message, type ShowResponse } from 'ollama';
@@ -152,6 +153,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     this.models.clear();
     this.nativeToolCallingByModelId.clear();
     this.visionByModelId.clear();
+    this.thinkingModels.clear();
+    this.nonThinkingModels.clear();
     this.cachedModelList = [];
     this.lastModelListRefreshMs = 0;
   }
@@ -517,7 +520,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       let response: AsyncIterable<ChatResponse>;
 
       try {
-        this.outputChannel.debug?.(
+        this.outputChannel.debug(
           `[client] chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}`,
         );
         response = await perRequestClient.chat({
@@ -527,7 +530,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           tools,
           ...(shouldThink ? { think: true } : {}),
         });
-        this.outputChannel.debug?.(`[client] chat response stream started for ${runtimeModelId}`);
+        this.outputChannel.debug(`[client] chat response stream started for ${runtimeModelId}`);
       } catch (innerError) {
         this.outputChannel.exception(`[client] chat request failed for model ${runtimeModelId}`, innerError);
         if (
@@ -536,7 +539,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         ) {
           this.thinkingModels.delete(runtimeModelId);
           this.nonThinkingModels.add(runtimeModelId);
-          this.outputChannel.debug?.(`[client] retrying without thinking support for ${runtimeModelId}`);
+          this.outputChannel.debug(`[client] retrying without thinking support for ${runtimeModelId}`);
           try {
             response = await perRequestClient.chat({
               model: runtimeModelId,
@@ -611,7 +614,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             contentStarted = true;
             emittedOutput = true;
           }
-          this.outputChannel.debug?.(`[client] streaming chunk: ${chunk.message.content.substring(0, 50)}`);
+          this.outputChannel.debug(`[client] streaming chunk: ${chunk.message.content.substring(0, 50)}`);
           // Filter context tags using SAX parser - handles incomplete tags across chunk boundaries
           const cleanContent = xmlFilter.write(chunk.message.content);
           if (cleanContent) {
@@ -660,7 +663,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       // "Sorry, no response was returned." Recover by retrying once without
       // streaming and emit any returned content.
       if (!emittedOutput && !token.isCancellationRequested) {
-        this.outputChannel.debug?.(
+        this.outputChannel.debug(
           `[client] stream returned no output for ${runtimeModelId}; retrying with stream=false`,
         );
 
@@ -941,7 +944,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     }
 
     if (strippedImageCount > 0) {
-      this.outputChannel.debug?.(
+      this.outputChannel.debug(
         `[client] stripped ${strippedImageCount} image(s) from messages (model does not support vision)`,
       );
     }
@@ -953,12 +956,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
    * Generate a VS Code tool call ID (9 alphanumeric characters)
    */
   private generateToolCallId(): string {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let id = '';
-    for (let i = 0; i < 9; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
+    return randomUUID();
   }
 
   /**

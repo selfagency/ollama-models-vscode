@@ -39,16 +39,14 @@ export function createXmlStreamFilter(): XmlStreamFilter {
   const parser = new Saxophone();
   let skipDepth = 0;
   let buffer = '';
+  let flushedLength = 0; // Track how many bytes have been returned by write()
 
   parser.on('tagopen', (tag: SaxophoneTag) => {
     if (contextTagNames.has(tag.name)) {
       skipDepth++;
     } else if (skipDepth === 0) {
       // Reconstruct opening tag
-      buffer += `<${tag.name}${tag.attrs ? ` ${tag.attrs}` : ''}${tag.isSelfClosing ? ' /' : ''}>`.replace(
-        ' />',
-        ' />',
-      );
+      buffer += `<${tag.name}${tag.attrs ? ` ${tag.attrs}` : ''}${tag.isSelfClosing ? ' /' : ''}>`;
     }
   });
 
@@ -86,11 +84,14 @@ export function createXmlStreamFilter(): XmlStreamFilter {
     write(chunk: string): string {
       const prevLength = buffer.length;
       parser.write(chunk);
-      return buffer.substring(prevLength);
+      const delta = buffer.substring(prevLength);
+      flushedLength = buffer.length; // Track that we've returned content up to this point
+      return delta;
     },
     end(): string {
       parser.end();
-      return buffer;
+      // Only return content that hasn't been flushed yet
+      return buffer.substring(flushedLength);
     },
   };
 }

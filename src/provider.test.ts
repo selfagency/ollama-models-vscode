@@ -107,7 +107,7 @@ describe('OllamaChatModelProvider caching', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any,
     );
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -127,7 +127,7 @@ describe('OllamaChatModelProvider caching', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any,
     );
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -146,7 +146,7 @@ describe('OllamaChatModelProvider caching', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any,
     );
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -155,6 +155,33 @@ describe('OllamaChatModelProvider caching', () => {
 
     expect(list).toHaveBeenCalledTimes(2);
     expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('clearModelCache resets thinkingModels and nonThinkingModels sets', async () => {
+    const list = vi.fn().mockResolvedValue({ models: [] });
+    const show = vi.fn().mockResolvedValue({ template: '', details: { families: [] } });
+
+    const provider = new OllamaChatModelProvider(
+      { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
+      { list, show } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any,
+    );
+
+    // Directly populate the private sets (via type cast for testing)
+    const providerWithPrivate = provider as any;
+    providerWithPrivate.thinkingModels.add('test-model');
+    providerWithPrivate.nonThinkingModels.add('test-model-2');
+
+    // Verify they're populated
+    expect(providerWithPrivate.thinkingModels.size).toBe(1);
+    expect(providerWithPrivate.nonThinkingModels.size).toBe(1);
+
+    // Act: call private clearModelCache directly
+    providerWithPrivate.clearModelCache();
+
+    // Assert: sets should be empty
+    expect(providerWithPrivate.thinkingModels.size).toBe(0);
+    expect(providerWithPrivate.nonThinkingModels.size).toBe(0);
   });
 });
 
@@ -167,7 +194,7 @@ describe('OllamaChatModelProvider utility flows', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const count = await provider.provideTokenCount({} as any, '12345678', {} as any);
@@ -178,7 +205,7 @@ describe('OllamaChatModelProvider utility flows', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const message = {
@@ -211,7 +238,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'qwen2.5-coder:latest' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -230,7 +257,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'granite4:latest' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -247,7 +274,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'llava:latest' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -263,7 +290,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -280,7 +307,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'llava' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -296,7 +323,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'tool-model' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -312,7 +339,7 @@ describe('OllamaChatModelProvider model detection', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn().mockResolvedValue({ models: [{ name: 'basic-model' }] }), show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -333,7 +360,7 @@ describe('OllamaChatModelProvider error handling', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -351,7 +378,7 @@ describe('OllamaChatModelProvider error handling', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const models = await provider.provideLanguageModelChatInformation({ silent: true }, {} as any);
@@ -375,7 +402,7 @@ describe('OllamaChatModelProvider error handling', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     vi.useFakeTimers();
@@ -407,7 +434,7 @@ describe('OllamaChatModelProvider error handling', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list, show } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // First call starts an in-flight fetch that hangs
@@ -445,7 +472,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -488,7 +515,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -532,7 +559,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Pre-register as a vision model so images are forwarded
@@ -586,7 +613,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Non-vision model: visionByModelId not set (defaults to false)
@@ -645,7 +672,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -698,7 +725,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -754,7 +781,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -805,7 +832,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -863,7 +890,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -911,7 +938,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -956,7 +983,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1010,7 +1037,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1076,7 +1103,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1140,7 +1167,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Force native tool-calling support so the first request includes tools.
@@ -1211,7 +1238,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Force native tool-calling support so first request includes tools.
@@ -1289,7 +1316,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Force native tool-calling support so the first request includes tools and follows the same branch as runtime.
@@ -1372,7 +1399,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn(), debug: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     (provider as any).nativeToolCallingByModelId.set('kimi-k2-thinking:cloud', true);
@@ -1458,7 +1485,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1522,7 +1549,7 @@ describe('OllamaChatModelProvider crash handling', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1618,7 +1645,7 @@ describe('XML context extraction in message conversion', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const progress = { report: vi.fn() };
@@ -1668,7 +1695,7 @@ describe('XML context extraction in message conversion', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Context tag appears mid-message, not at the start — must NOT be promoted to system
@@ -1713,7 +1740,7 @@ describe('XML context extraction in message conversion', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     // Simulate a two-turn conversation where both turns inject an environment_info block
@@ -1770,7 +1797,7 @@ describe('XML context extraction in message conversion', () => {
     const provider = new OllamaChatModelProvider(
       { secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() } } as any,
       { list: vi.fn(), show: vi.fn() } as any,
-      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), exception: vi.fn() } as any,
+      { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), exception: vi.fn() } as any,
     );
 
     const userText = [

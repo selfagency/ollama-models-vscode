@@ -9,7 +9,7 @@ import type { DiagnosticsLogger } from './diagnostics.js';
 // Hover documentation for Modelfile keywords
 // ---------------------------------------------------------------------------
 
-const KEYWORD_DOCS: Record<string, string> = {
+export const KEYWORD_DOCS: Record<string, string> = {
   FROM: '**FROM** *(required)* — Defines the base model to use.\n\n```\nFROM llama3.2:3b\nFROM ./model.gguf\n```',
   PARAMETER:
     '**PARAMETER** — Sets a runtime parameter.\n\nCommon parameters: `temperature`, `num_ctx`, `top_k`, `top_p`, `stop`, `seed`, `repeat_penalty`, `num_predict`.\n\n```\nPARAMETER temperature 0.7\nPARAMETER num_ctx 4096\n```',

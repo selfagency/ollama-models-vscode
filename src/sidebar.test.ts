@@ -143,6 +143,35 @@ describe('LocalModelsProvider', () => {
     callbackProvider.dispose();
   });
 
+  it('does not leak configuration listeners when localModelRefreshInterval changes multiple times', async () => {
+    const vscode = await import('vscode');
+    const onDidChangeConfigListeners: Array<(e: any) => void> = [];
+
+    // Replace the onDidChangeConfiguration mock to track listener registrations
+    vi.mocked(vscode.workspace.onDidChangeConfiguration).mockImplementation((listener: any) => {
+      onDidChangeConfigListeners.push(listener);
+      return { dispose: vi.fn() };
+    });
+
+    // Create a fresh provider with the new mock
+    const testProvider = new LocalModelsProvider(mockClient);
+    const initialListeners = onDidChangeConfigListeners.length;
+
+    // Simulate the config change event being fired 3 times
+    const fakeEvent = { affectsConfiguration: (key: string) => key === 'ollama.localModelRefreshInterval' };
+    for (let i = 0; i < 3; i++) {
+      // Fire ALL current listeners (simulates VS Code dispatching the event)
+      [...onDidChangeConfigListeners].forEach(l => l(fakeEvent));
+      // Give time for any async operations
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    // There should be exactly the initial listener count (registered once in constructor), not growing
+    expect(onDidChangeConfigListeners.length).toBe(initialListeners);
+
+    testProvider.dispose();
+  });
+
   it('adds tooltip process details for local models', async () => {
     const groups = await provider.getChildren();
     const llamaGroup = groups.find((g: any) => g.label === 'llama');
