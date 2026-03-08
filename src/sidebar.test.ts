@@ -1,5 +1,7 @@
 import type { Ollama } from 'ollama';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ExtensionContext } from 'vscode';
+import type { CloudModelsProvider, LibraryModelsProvider, LocalModelsProvider, ModelTreeItem } from './sidebar.js';
 
 describe('LocalModelsProvider', () => {
   let provider: any;
@@ -134,13 +136,20 @@ describe('LocalModelsProvider', () => {
   });
 
   it('invokes onLocalModelsChanged callback when local models are refreshed', async () => {
-    const onLocalModelsChanged = vi.fn();
-    const callbackProvider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
+    vi.useFakeTimers();
+    try {
+      const onLocalModelsChanged = vi.fn();
+      const callbackProvider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
 
-    callbackProvider.refresh();
+      callbackProvider.refresh();
+      // refresh() is debounced — advance past the 300ms window
+      await vi.advanceTimersByTimeAsync(300);
 
-    expect(onLocalModelsChanged).toHaveBeenCalledTimes(1);
-    callbackProvider.dispose();
+      expect(onLocalModelsChanged).toHaveBeenCalledTimes(1);
+      callbackProvider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not leak configuration listeners when localModelRefreshInterval changes multiple times', async () => {
@@ -310,7 +319,7 @@ describe('LocalModelsProvider', () => {
 
     const { CloudModelsProvider } = await import('./sidebar.js');
     const cloudProvider = new CloudModelsProvider(
-      { secrets: { get: vi.fn().mockResolvedValue(undefined) } } as any,
+      { secrets: { get: vi.fn().mockResolvedValue(undefined) } } as unknown as ExtensionContext,
       undefined,
     );
     cloudProvider.grouped = false;
@@ -454,7 +463,7 @@ describe('LocalModelsProvider', () => {
 
     const { CloudModelsProvider } = await import('./sidebar.js');
     const cloudProvider = new CloudModelsProvider(
-      { secrets: { get: vi.fn().mockResolvedValue(undefined) } } as any,
+      { secrets: { get: vi.fn().mockResolvedValue(undefined) } } as unknown as ExtensionContext,
       undefined,
     );
 
@@ -621,13 +630,13 @@ describe('LocalModelsProvider', () => {
       list: vi.fn().mockResolvedValue({ models: [] }),
       ps: vi.fn().mockResolvedValue({ models: [] }),
       generate: regularGenerate,
-    } as any;
+    } as unknown as Ollama;
 
     const mockContext = {
       secrets: {
         get: vi.fn().mockResolvedValue('test-cloud-api-key'),
       },
-    } as any;
+    } as unknown as ExtensionContext;
 
     const localProvider = new LocalModelsProvider(mockRegularClient, mockContext);
     await localProvider.stopModel('llama2:cloud');
@@ -706,7 +715,7 @@ describe('LocalModelsProvider', () => {
         secrets: {
           get: vi.fn().mockResolvedValue('test-key'),
         },
-      } as unknown as any,
+      } as unknown as ExtensionContext,
       undefined,
     );
 
@@ -848,7 +857,7 @@ describe('LocalModelsProvider', () => {
     const libraryProvider = new LibraryModelsProvider(undefined);
     libraryProvider.setLocalProvider({
       getCachedLocalModelNames: () => new Set(['llama3.2:1b']),
-    } as any);
+    } as unknown as LocalModelsProvider);
     // getChildren() groups by family; llama3.2 -> family 'llama'
     const groups = await libraryProvider.getChildren();
     const llamaGroup = groups.find((item: any) => item.label === 'llama');
@@ -881,7 +890,7 @@ describe('LocalModelsProvider', () => {
     // local provider returns empty set — nothing downloaded
     libraryProvider.setLocalProvider({
       getCachedLocalModelNames: () => new Set<string>(),
-    } as any);
+    } as unknown as LocalModelsProvider);
     // getChildren() groups by family; llama3.2 -> family 'llama'
     const groups = await libraryProvider.getChildren();
     const llamaGroup = groups.find((item: any) => item.label === 'llama');
@@ -953,7 +962,7 @@ describe('LocalModelsProvider', () => {
     const libraryProvider = new LibraryModelsProvider(undefined);
     libraryProvider.setLocalProvider({
       getCachedLocalModelNames: () => localModels,
-    } as any);
+    } as unknown as LocalModelsProvider);
     // getChildren() groups by family; llama3.2 -> family 'llama'
     const groups = await libraryProvider.getChildren();
     const llamaGroup = groups.find((item: any) => item.label === 'llama');
@@ -1042,7 +1051,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       refresh: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     handleRefreshLocalModels(mockProvider);
 
@@ -1054,7 +1063,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       refresh: vi.fn(),
-    } as any;
+    } as unknown as LibraryModelsProvider;
 
     handleRefreshLibrary(mockProvider);
 
@@ -1066,7 +1075,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       refresh: vi.fn(),
-    } as any;
+    } as unknown as CloudModelsProvider;
 
     handleRefreshCloudModels(mockProvider);
 
@@ -1078,7 +1087,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       deleteModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'local-stopped', 1000);
 
@@ -1090,7 +1099,7 @@ describe('Extracted command handlers', () => {
   it('handleDeleteModel blocks deletion of a running local model', async () => {
     const { handleDeleteModel, ModelTreeItem } = await import('./sidebar.js');
 
-    const mockProvider = { deleteModel: vi.fn() } as any;
+    const mockProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
     const item = new ModelTreeItem('test-model', 'local-running', 1000);
 
     await handleDeleteModel(item, mockProvider);
@@ -1101,7 +1110,7 @@ describe('Extracted command handlers', () => {
   it('handleDeleteModel blocks deletion of a running cloud model', async () => {
     const { handleDeleteModel, ModelTreeItem } = await import('./sidebar.js');
 
-    const mockProvider = { deleteModel: vi.fn() } as any;
+    const mockProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
     const item = new ModelTreeItem('cloud-model', 'cloud-running', 1000);
 
     await handleDeleteModel(item, mockProvider);
@@ -1150,7 +1159,7 @@ describe('Extracted command handlers', () => {
 
     const { handleDeleteModel, ModelTreeItem } = await import('./sidebar.js');
 
-    const mockProvider = { deleteModel: vi.fn() } as any;
+    const mockProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
     const item = new ModelTreeItem('test-model', 'local-stopped');
 
     await handleDeleteModel(item, mockProvider);
@@ -1163,7 +1172,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       deleteModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'library-model');
 
@@ -1177,7 +1186,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       startModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'local-stopped');
 
@@ -1191,7 +1200,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       stopModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'local-running');
 
@@ -1215,9 +1224,9 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       deleteModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
-    handleDeleteModel(null as any, mockProvider);
+    handleDeleteModel(null as unknown as ModelTreeItem, mockProvider);
 
     // null/undefined guard fires before any confirmation prompt
     expect(mockProvider.deleteModel).not.toHaveBeenCalled();
@@ -1228,7 +1237,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       startModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'local-running');
 
@@ -1242,7 +1251,7 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       stopModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'cloud-running');
 
@@ -1257,13 +1266,13 @@ describe('Extracted command handlers', () => {
     const mockProvider = {
       startModel: vi.fn(),
       getCachedLocalModelNames: vi.fn().mockReturnValue(new Set(['test-model'])),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const mockCloudProvider = {
       resolveRunnableCloudModelName: vi.fn().mockResolvedValue('test-model'),
       markModelWarm: vi.fn(),
       refresh: vi.fn(),
-    } as any;
+    } as unknown as CloudModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'cloud-stopped');
 
@@ -1325,13 +1334,13 @@ describe('Extracted command handlers', () => {
     const mockProvider = {
       startModel: mockStartModel,
       getCachedLocalModelNames: vi.fn().mockReturnValue(new Set<string>()),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const mockCloudProvider = {
       resolveRunnableCloudModelName: vi.fn().mockResolvedValue('new-cloud-model:cloud'),
       markModelWarm: vi.fn(),
       refresh: vi.fn(),
-    } as any;
+    } as unknown as CloudModelsProvider;
 
     const item = new ModelTreeItem('new-cloud-model', 'cloud-stopped');
 
@@ -1348,13 +1357,13 @@ describe('Extracted command handlers', () => {
 
     const mockProvider = {
       stopModel: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const mockCloudProvider = {
       getWarmedModelName: vi.fn().mockReturnValue('test-model:cloud'),
       markModelStopped: vi.fn(),
       refresh: vi.fn(),
-    } as any;
+    } as unknown as CloudModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'cloud-running');
 
@@ -1401,11 +1410,11 @@ describe('Extracted command handlers', () => {
 
     const _mockClient = {
       pull: vi.fn().mockResolvedValue(undefined),
-    } as any;
+    } as unknown as Ollama;
 
     const mockProvider = {
       refresh: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('mistral:7b', 'library-model');
 
@@ -1422,11 +1431,11 @@ describe('Extracted command handlers', () => {
 
     const mockClient = {
       pull: vi.fn().mockResolvedValue(undefined),
-    } as any;
+    } as unknown as Ollama;
 
     const mockProvider = {
       refresh: vi.fn(),
-    } as any;
+    } as unknown as LocalModelsProvider;
 
     const item = new ModelTreeItem('test-model', 'local-running');
 
@@ -1503,7 +1512,10 @@ describe('Extracted command handlers', () => {
 
     const { handlePullModel } = await import('./sidebar.js');
 
-    await handlePullModel({ pull: mockPull } as any, { refresh: mockRefresh } as any);
+    await handlePullModel(
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: mockRefresh } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).toHaveBeenCalledWith({ model: 'llama3:8b', stream: true });
     // Progress should have been reported at least once with a percentage message
@@ -1545,7 +1557,10 @@ describe('Extracted command handlers', () => {
 
     const { handlePullModel } = await import('./sidebar.js');
 
-    await handlePullModel({ pull: mockPull } as any, { refresh: vi.fn() } as any);
+    await handlePullModel(
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: vi.fn() } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).not.toHaveBeenCalled();
   });
@@ -1603,7 +1618,11 @@ describe('Extracted command handlers', () => {
     const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
 
     const item = new ModelTreeItem('mistral:7b', 'library-model-variant');
-    await handlePullModelFromLibrary(item, { pull: mockPull } as any, { refresh: mockRefresh } as any);
+    await handlePullModelFromLibrary(
+      item,
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: mockRefresh } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).toHaveBeenCalledWith({ model: 'mistral:7b', stream: true });
     const reportCalls = progressReport.mock.calls.map((c: any) => c[0].message as string);
@@ -1676,10 +1695,10 @@ describe('Extracted command handlers', () => {
     const item = new ModelTreeItem('mistral:7b', 'library-model-variant');
     await handlePullModelFromLibrary(
       item,
-      { pull: mockPull, abort: mockAbort } as any,
+      { pull: mockPull, abort: mockAbort } as unknown as Ollama,
       {
         refresh: vi.fn(),
-      } as any,
+      } as unknown as LocalModelsProvider,
     );
 
     expect(mockAbort).toHaveBeenCalled();
@@ -1741,7 +1760,7 @@ describe('Extracted command handlers', () => {
         models: [{ name: 'llama3-tools:latest', size: 4000000000, digest: 'abc' }],
       }),
       ps: vi.fn().mockResolvedValue({ models: [] }),
-    } as any;
+    } as unknown as Ollama;
 
     const localProvider = new LocalModelsProvider(mockClient);
 
@@ -1814,7 +1833,11 @@ describe('Extracted command handlers', () => {
     const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
 
     const item = new ModelTreeItem('llama3.2:1b', 'library-model-variant');
-    await handlePullModelFromLibrary(item, { pull: mockPull } as any, { refresh: mockRefresh } as any);
+    await handlePullModelFromLibrary(
+      item,
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: mockRefresh } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).toHaveBeenCalledWith({ model: 'llama3.2:1b', stream: true });
     expect(mockRefresh).toHaveBeenCalled();
@@ -1872,7 +1895,11 @@ describe('Extracted command handlers', () => {
     const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
 
     const item = new ModelTreeItem('llama3.2:1b', 'library-model-downloaded-variant');
-    await handlePullModelFromLibrary(item, { pull: mockPull } as any, { refresh: mockRefresh } as any);
+    await handlePullModelFromLibrary(
+      item,
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: mockRefresh } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).toHaveBeenCalledWith({ model: 'llama3.2:1b', stream: true });
     expect(mockRefresh).toHaveBeenCalled();
@@ -1916,7 +1943,11 @@ describe('Extracted command handlers', () => {
     const { handlePullModelFromLibrary, ModelTreeItem } = await import('./sidebar.js');
 
     const item = new ModelTreeItem('llama3.2', 'library-model');
-    await handlePullModelFromLibrary(item, { pull: mockPull } as any, { refresh: vi.fn() } as any);
+    await handlePullModelFromLibrary(
+      item,
+      { pull: mockPull } as unknown as Ollama,
+      { refresh: vi.fn() } as unknown as LocalModelsProvider,
+    );
 
     expect(mockPull).not.toHaveBeenCalled();
   });
@@ -1965,21 +1996,21 @@ describe('Extracted command handlers', () => {
       subscriptions: { push: vi.fn() },
       secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
       globalState: { get: vi.fn(), update: vi.fn() },
-    } as any;
+    } as unknown as ExtensionContext;
 
     const mockClient = {
       list: vi.fn().mockResolvedValue({ models: [] }),
       generate: vi.fn(),
-    } as any;
+    } as unknown as Ollama;
 
     registerSidebar(mockContext, mockClient);
 
     const registerCommandMock = vi.mocked(vscode.commands.registerCommand);
     const registeredIds = registerCommandMock.mock.calls.map(([id]) => id);
 
-    expect(registeredIds).toContain('ollama-copilot.collapseLocalModels');
-    expect(registeredIds).toContain('ollama-copilot.collapseCloudModels');
-    expect(registeredIds).toContain('ollama-copilot.collapseLibrary');
+    expect(registeredIds).toContain('opilot.collapseLocalModels');
+    expect(registeredIds).toContain('opilot.collapseCloudModels');
+    expect(registeredIds).toContain('opilot.collapseLibrary');
 
     // Invoke each collapse command handler and verify it delegates to the built-in VS Code command
     const executeCommandMock = vi.mocked(vscode.commands.executeCommand);
@@ -1988,13 +2019,13 @@ describe('Extracted command handlers', () => {
       return (entry?.[1] as (() => void) | undefined)?.();
     };
 
-    callHandler('ollama-copilot.collapseLocalModels');
+    callHandler('opilot.collapseLocalModels');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-local-models.collapseAll');
 
-    callHandler('ollama-copilot.collapseCloudModels');
+    callHandler('opilot.collapseCloudModels');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-cloud-models.collapseAll');
 
-    callHandler('ollama-copilot.collapseLibrary');
+    callHandler('opilot.collapseLibrary');
     expect(executeCommandMock).toHaveBeenCalledWith('workbench.actions.treeView.ollama-library-models.collapseAll');
   });
 
@@ -2041,19 +2072,19 @@ describe('Extracted command handlers', () => {
       subscriptions: { push: vi.fn() },
       secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
       globalState: { get: vi.fn(), update: vi.fn() },
-    } as any;
-    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as any;
+    } as unknown as ExtensionContext;
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as unknown as Ollama;
 
     registerSidebar(mockContext, mockClient);
 
     const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
     const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
-    expect(registeredIds).toContain('ollama-copilot.filterLocalModels');
-    expect(registeredIds).toContain('ollama-copilot.clearLocalFilter');
-    expect(registeredIds).toContain('ollama-copilot.filterCloudModels');
-    expect(registeredIds).toContain('ollama-copilot.clearCloudFilter');
-    expect(registeredIds).toContain('ollama-copilot.filterLibraryModels');
-    expect(registeredIds).toContain('ollama-copilot.clearLibraryFilter');
+    expect(registeredIds).toContain('opilot.filterLocalModels');
+    expect(registeredIds).toContain('opilot.clearLocalFilter');
+    expect(registeredIds).toContain('opilot.filterCloudModels');
+    expect(registeredIds).toContain('opilot.clearCloudFilter');
+    expect(registeredIds).toContain('opilot.filterLibraryModels');
+    expect(registeredIds).toContain('opilot.clearLibraryFilter');
   });
 });
 
@@ -2276,18 +2307,316 @@ describe('registerSidebar grouped/flat toggle commands', () => {
       subscriptions: { push: vi.fn() },
       secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
       globalState: { get: vi.fn().mockReturnValue(undefined), update: vi.fn() },
-    } as any;
-    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as any;
+    } as unknown as ExtensionContext;
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as unknown as Ollama;
 
     registerSidebar(mockContext, mockClient);
 
     const registerCommandMock = vscode.commands.registerCommand as ReturnType<typeof vi.fn>;
     const registeredIds = registerCommandMock.mock.calls.map(([id]: any[]) => id);
-    expect(registeredIds).toContain('ollama-copilot.toggleLocalGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleCloudGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleLibraryGrouping');
-    expect(registeredIds).toContain('ollama-copilot.toggleLocalGroupingToTree');
-    expect(registeredIds).toContain('ollama-copilot.toggleCloudGroupingToTree');
-    expect(registeredIds).toContain('ollama-copilot.toggleLibraryGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleLocalGrouping');
+    expect(registeredIds).toContain('opilot.toggleCloudGrouping');
+    expect(registeredIds).toContain('opilot.toggleLibraryGrouping');
+    expect(registeredIds).toContain('opilot.toggleLocalGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleCloudGroupingToTree');
+    expect(registeredIds).toContain('opilot.toggleLibraryGroupingToTree');
+  });
+});
+
+describe('Provider lifecycle and disposal', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('LocalModelsProvider.dispose() unregisters the config change listener', async () => {
+    vi.resetModules();
+
+    const configDispose = vi.fn();
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: configDispose })),
+      },
+    }));
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const mockClient = {
+      list: vi.fn().mockResolvedValue({ models: [] }),
+      ps: vi.fn().mockResolvedValue({ models: [] }),
+      show: vi.fn(),
+    } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient);
+
+    provider.dispose();
+
+    expect(configDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('LocalModelsProvider.dispose() stops auto-refresh intervals', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: (key: string) => (key === 'localModelRefreshInterval' ? 1 : 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const onLocalModelsChanged = vi.fn();
+    const mockClient = {
+      list: vi.fn().mockResolvedValue({ models: [] }),
+      ps: vi.fn().mockResolvedValue({ models: [] }),
+    } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
+
+    // Dispose before the first auto-refresh interval fires (interval = 1s)
+    provider.dispose();
+
+    // Advance 5 seconds — auto-refresh should NOT fire after dispose
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(onLocalModelsChanged).not.toHaveBeenCalled();
+  });
+
+  it('LocalModelsProvider.dispose() cancels pending debounce timer before it fires', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    const { LocalModelsProvider } = await import('./sidebar.js');
+    const onLocalModelsChanged = vi.fn();
+    const mockClient = {
+      list: vi.fn().mockResolvedValue({ models: [] }),
+      ps: vi.fn().mockResolvedValue({ models: [] }),
+    } as unknown as Ollama;
+    const provider = new LocalModelsProvider(mockClient, undefined, undefined, onLocalModelsChanged);
+
+    // Start a debounce (300ms)
+    provider.refresh();
+
+    // Dispose before debounce fires
+    provider.dispose();
+
+    // Advance past the 300ms debounce window
+    await vi.advanceTimersByTimeAsync(500);
+
+    // onLocalModelsChanged must NOT have been called (timer was cancelled)
+    expect(onLocalModelsChanged).not.toHaveBeenCalled();
+  });
+
+  it('CloudModelsProvider.dispose() stops auto-refresh intervals', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        registerTreeDataProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: (key: string) => (key === 'cloudModelRefreshInterval' ? 1 : 0) })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue({ ok: true, headers: { get: vi.fn().mockReturnValue('text/html') }, text: async () => '' }),
+    );
+
+    const { CloudModelsProvider } = await import('./sidebar.js');
+    const mockContext = {
+      secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
+      globalState: { get: vi.fn().mockReturnValue(undefined), update: vi.fn() },
+    } as unknown as ExtensionContext;
+
+    const cloudProvider = new CloudModelsProvider(mockContext);
+    const refreshSpy = vi.spyOn(cloudProvider, 'refresh');
+
+    cloudProvider.dispose();
+
+    // Advance several seconds — refresh should NOT be called by internal intervals after dispose
+    await vi.advanceTimersByTimeAsync(10000);
+
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
+  it('registerSidebar pushes provider dispose wrappers to context.subscriptions', async () => {
+    vi.resetModules();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0), update: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    }));
+
+    const { registerSidebar } = await import('./sidebar.js');
+
+    const pushedItems: unknown[] = [];
+    const mockContext = {
+      subscriptions: { push: (...items: unknown[]) => pushedItems.push(...items) },
+      secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
+      globalState: { get: vi.fn().mockReturnValue(undefined), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }), generate: vi.fn() } as unknown as Ollama;
+
+    registerSidebar(mockContext, mockClient);
+
+    // At least 3 dispose-wrapper items must be in subscriptions (for local, library, cloud providers)
+    const disposeWrappers = pushedItems.filter(
+      item =>
+        item !== null && typeof item === 'object' && typeof (item as { dispose?: unknown }).dispose === 'function',
+    );
+    expect(disposeWrappers.length).toBeGreaterThanOrEqual(3);
   });
 });

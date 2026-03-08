@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-haqc
 title: 'Performance: optimize XML streaming parser in formatting.ts'
-status: todo
+status: completed
 type: task
 priority: low
 created_at: 2026-03-08T16:41:32Z
-updated_at: 2026-03-08T16:41:32Z
+updated_at: 2026-03-08T17:45:44Z
 ---
 
 Profile and improve the performance of the SAX-based XML response formatter in `src/formatting.ts` to reduce overhead for large streamed responses.

@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-k68q
 title: Refactor `as any` type escaping in test mocks
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-03-08T16:39:52Z
-updated_at: 2026-03-08T16:39:52Z
+updated_at: 2026-03-08T17:25:06Z
 ---
 
 Replace `as any` type assertions in test mocks with properly typed alternatives or `as unknown as T` casts.

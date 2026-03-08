@@ -512,7 +512,7 @@ describe('handleBuildModelfile', () => {
     const item = new ModelfileItem({ fsPath: '/modelfiles/pirate.modelfile' } as unknown as import('vscode').Uri);
     await handleBuildModelfile(item, mockClient as unknown as Ollama);
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ollama-copilot.refreshLocalModels');
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('opilot.refreshLocalModels');
   });
 
   it('shows error message when client.create throws', async () => {
@@ -763,17 +763,11 @@ describe('registerModelfileManager', () => {
     registerModelfileManager(context, client);
 
     expect(vscode.window.registerTreeDataProvider).toHaveBeenCalledWith('ollama-modelfiles', expect.any(Object));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'ollama-copilot.refreshModelfiles',
-      expect.any(Function),
-    );
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.newModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.editModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('ollama-copilot.buildModelfile', expect.any(Function));
-    expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'ollama-copilot.openModelfilesFolder',
-      expect.any(Function),
-    );
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.refreshModelfiles', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.newModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.editModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.buildModelfile', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('opilot.openModelfilesFolder', expect.any(Function));
     expect(vscode.languages.registerHoverProvider).toHaveBeenCalledWith(
       expect.objectContaining({ language: 'modelfile' }),
       expect.any(Object),
@@ -813,20 +807,535 @@ describe('registerModelfileManager', () => {
     const getCb = (name: string) => cbMap.get(name);
 
     // refreshModelfiles: () => provider.refresh()
-    getCb('ollama-copilot.refreshModelfiles')?.();
+    getCb('opilot.refreshModelfiles')?.();
 
     // newModelfile: () => handleNewModelfile(path, client) — showInputBox returns undefined → early return
-    await getCb('ollama-copilot.newModelfile')?.();
+    await getCb('opilot.newModelfile')?.();
 
     // editModelfile: (item) => executeCommand('vscode.open', item.uri) — pass fake item
-    getCb('ollama-copilot.editModelfile')?.({ uri: { fsPath: '/fake/test.modelfile' } });
+    getCb('opilot.editModelfile')?.({ uri: { fsPath: '/fake/test.modelfile' } });
 
     // buildModelfile: (item) => handleBuildModelfile(item, client) — showInputBox returns undefined → early return
-    await getCb('ollama-copilot.buildModelfile')?.({ label: 'test', uri: { fsPath: '/fake/test.modelfile' } });
+    await getCb('opilot.buildModelfile')?.({ label: 'test', uri: { fsPath: '/fake/test.modelfile' } });
 
     // openModelfilesFolder: async () => handleOpenModelfilesFolder(path) — env.openExternal is mocked
-    await getCb('ollama-copilot.openModelfilesFolder')?.();
+    await getCb('opilot.openModelfilesFolder')?.();
 
     expect(cbMap.size).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseModelfile
+// ---------------------------------------------------------------------------
+
+describe('parseModelfile', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('vscode', minimalVscodeMock);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('parses basic FROM directive', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    expect(parseModelfile('FROM llama3.2')).toMatchObject({ from: 'llama3.2' });
+  });
+
+  it('parses SYSTEM directive', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nSYSTEM You are helpful.');
+    expect(result.system).toBe('You are helpful.');
+  });
+
+  it('parses TEMPLATE directive', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nTEMPLATE {{ .Prompt }}');
+    expect(result.template).toBe('{{ .Prompt }}');
+  });
+
+  it('parses single LICENSE as string', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nLICENSE MIT');
+    expect(result.license).toBe('MIT');
+  });
+
+  it('parses multiple LICENSEs as array', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nLICENSE MIT\nLICENSE Apache-2.0');
+    expect(result.license).toEqual(['MIT', 'Apache-2.0']);
+  });
+
+  it('parses ADAPTER directive', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nADAPTER ./my-adapter.gguf');
+    expect(result.adapters).toEqual({ './my-adapter.gguf': './my-adapter.gguf' });
+  });
+
+  it('parses PARAMETER with numeric value', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nPARAMETER temperature 0.7');
+    expect(result.parameters).toEqual({ temperature: 0.7 });
+  });
+
+  it('parses PARAMETER with integer value', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nPARAMETER num_ctx 4096');
+    expect(result.parameters).toEqual({ num_ctx: 4096 });
+  });
+
+  it('parses PARAMETER with string value', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nPARAMETER stop "<end>"');
+    expect(result.parameters?.stop).toBe('"<end>"');
+  });
+
+  it('parses multiple PARAMETERs', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nPARAMETER temperature 0.5\nPARAMETER num_ctx 2048');
+    expect(result.parameters).toEqual({ temperature: 0.5, num_ctx: 2048 });
+  });
+
+  it('parses MESSAGE with role and quoted content', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nMESSAGE user "hello there"');
+    expect(result.messages).toEqual([{ role: 'user', content: 'hello there' }]);
+  });
+
+  it('parses MESSAGE with role and unquoted content', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nMESSAGE assistant You are welcome.');
+    expect(result.messages).toEqual([{ role: 'assistant', content: 'You are welcome.' }]);
+  });
+
+  it('parses MESSAGE with system role', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nMESSAGE system Be helpful.');
+    expect(result.messages).toEqual([{ role: 'system', content: 'Be helpful.' }]);
+  });
+
+  it('parses triple-quoted single-line SYSTEM', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nSYSTEM """hello world"""');
+    expect(result.system).toBe('hello world');
+  });
+
+  it('parses triple-quoted multi-line SYSTEM', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const content = 'FROM base\nSYSTEM """\nline one\nline two\n"""';
+    const result = parseModelfile(content);
+    expect(result.system).toContain('line one');
+    expect(result.system).toContain('line two');
+  });
+
+  it('parses triple-quoted multi-line where closing line has trailing content', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const content = 'FROM base\nSYSTEM """\ntrailing line"""';
+    const result = parseModelfile(content);
+    expect(result.system).toContain('trailing line');
+  });
+
+  it('parses regular double-quoted SYSTEM value', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nSYSTEM "simple quoted"');
+    expect(result.system).toBe('simple quoted');
+  });
+
+  it('skips comment lines', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('# This is a comment\nFROM base');
+    expect(result.from).toBe('base');
+  });
+
+  it('skips blank lines', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('\n\nFROM base\n\n');
+    expect(result.from).toBe('base');
+  });
+
+  it('skips unknown keywords', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nUNKNOWN value');
+    expect(result.from).toBe('base');
+    expect(result.system).toBeUndefined();
+  });
+
+  it('skips lines with no space separator (bare keyword)', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nNOSPACE');
+    expect(result.from).toBe('base');
+    expect(result.system).toBeUndefined();
+  });
+
+  it('does not include parameters key when no PARAMETER directives', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base');
+    expect(result.parameters).toBeUndefined();
+  });
+
+  it('does not include messages key when no MESSAGE directives', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base');
+    expect(result.messages).toBeUndefined();
+  });
+
+  it('handles mixed directives in one Modelfile', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const content = [
+      'FROM llama3.2',
+      'SYSTEM "Be helpful"',
+      'PARAMETER temperature 0.5',
+      'PARAMETER num_ctx 4096',
+      'MESSAGE user hello',
+      'MESSAGE assistant Hi!',
+    ].join('\n');
+    const result = parseModelfile(content);
+    expect(result.from).toBe('llama3.2');
+    expect(result.system).toBe('Be helpful');
+    expect(result.parameters).toEqual({ temperature: 0.5, num_ctx: 4096 });
+    expect(result.messages).toHaveLength(2);
+  });
+
+  it('returns empty object when content is empty', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('');
+    expect(result).toEqual({});
+  });
+
+  it('ignores invalid MESSAGE lines (no space in value)', async () => {
+    const { parseModelfile } = await import('./modelfiles.js');
+    const result = parseModelfile('FROM base\nMESSAGE invalidsingletoken');
+    expect(result.messages).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ModelfilesProvider.getChildren — error path
+// ---------------------------------------------------------------------------
+
+describe('ModelfilesProvider.getChildren error path', () => {
+  it('returns empty array when readdir throws', async () => {
+    vi.resetModules();
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockRejectedValue(new Error('ENOENT: no such file or directory')),
+      readFile: vi.fn().mockResolvedValue(''),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+    }));
+
+    const { ModelfilesProvider } = await import('./modelfiles.js');
+    const context = { subscriptions: [] } as any;
+    const provider = new ModelfilesProvider(context);
+    const children = await provider.getChildren();
+    expect(children).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ModelfilesProvider watcher callbacks cover refresh()
+// ---------------------------------------------------------------------------
+
+describe('ModelfilesProvider watcher callbacks', () => {
+  it('calls refresh when watcher fires onDidCreate', async () => {
+    vi.resetModules();
+
+    let onDidCreateCb: (() => void) | undefined;
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+    }));
+
+    const watcherMock = {
+      onDidCreate: vi.fn((cb: () => void) => {
+        onDidCreateCb = cb;
+        return { dispose: vi.fn() };
+      }),
+      onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    };
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      workspace: {
+        ...minimalVscodeMock().workspace,
+        createFileSystemWatcher: vi.fn(() => watcherMock),
+      },
+    }));
+
+    const { ModelfilesProvider } = await import('./modelfiles.js');
+    const context = { subscriptions: [] } as any;
+    const provider = new ModelfilesProvider(context);
+
+    const fireCall = vi.fn();
+    (provider as any).treeChangeEmitter.fire = fireCall;
+
+    onDidCreateCb?.();
+
+    expect(fireCall).toHaveBeenCalledWith(null);
+  });
+
+  it('calls refresh when watcher fires onDidDelete', async () => {
+    vi.resetModules();
+
+    let onDidDeleteCb: (() => void) | undefined;
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+    }));
+
+    const watcherMock = {
+      onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidDelete: vi.fn((cb: () => void) => {
+        onDidDeleteCb = cb;
+        return { dispose: vi.fn() };
+      }),
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    };
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      workspace: {
+        ...minimalVscodeMock().workspace,
+        createFileSystemWatcher: vi.fn(() => watcherMock),
+      },
+    }));
+
+    const { ModelfilesProvider } = await import('./modelfiles.js');
+    const context = { subscriptions: [] } as any;
+    const provider = new ModelfilesProvider(context);
+
+    const fireCall = vi.fn();
+    (provider as any).treeChangeEmitter.fire = fireCall;
+
+    onDidDeleteCb?.();
+
+    expect(fireCall).toHaveBeenCalledWith(null);
+  });
+
+  it('updates folderPath when modelfilesPath configuration changes', async () => {
+    vi.resetModules();
+
+    let configChangeCb: ((e: any) => void) | undefined;
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      workspace: {
+        ...minimalVscodeMock().workspace,
+        onDidChangeConfiguration: vi.fn((cb: (e: any) => void) => {
+          configChangeCb = cb;
+          return { dispose: vi.fn() };
+        }),
+        getConfiguration: vi.fn(() => ({
+          get: vi.fn().mockReturnValue('/new/path'),
+        })),
+      },
+    }));
+
+    const { ModelfilesProvider } = await import('./modelfiles.js');
+    const context = { subscriptions: [] } as any;
+    const provider = new ModelfilesProvider(context);
+    const fireCall = vi.fn();
+    (provider as any).treeChangeEmitter.fire = fireCall;
+
+    configChangeCb?.({ affectsConfiguration: (key: string) => key === 'ollama.modelfilesPath' });
+
+    expect(fireCall).toHaveBeenCalledWith(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleNewModelfile — additional edge cases
+// ---------------------------------------------------------------------------
+
+describe('handleNewModelfile edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+      readFile: vi.fn().mockResolvedValue(''),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      workspace: {
+        ...minimalVscodeMock().workspace,
+        fs: { writeFile: vi.fn().mockResolvedValue(undefined) },
+        openTextDocument: vi.fn().mockResolvedValue({}),
+      },
+      window: {
+        ...minimalVscodeMock().window,
+        showInputBox: vi.fn(),
+        showQuickPick: vi.fn(),
+        showTextDocument: vi.fn(),
+      },
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('falls back to default model when client.list() throws', async () => {
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('my-bot').mockResolvedValueOnce('You are helpful.');
+    vi.mocked(vscode.window.showQuickPick).mockResolvedValue({ label: 'llama3.2:3b', description: 'default' });
+    vi.mocked(vscode.window.showTextDocument).mockResolvedValue(undefined as any);
+
+    const mockClient = { list: vi.fn().mockRejectedValue(new Error('connection refused')) } as any;
+    const { handleNewModelfile } = await import('./modelfiles.js');
+    await handleNewModelfile('/modelfiles', mockClient);
+
+    // Quick pick should still be shown with a fallback model
+    expect(vscode.window.showQuickPick).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ label: 'llama3.2:3b' })]),
+      expect.anything(),
+    );
+  });
+
+  it('cancels when systemPrompt input is dismissed with undefined', async () => {
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showInputBox)
+      .mockResolvedValueOnce('my-bot') // name
+      .mockResolvedValueOnce(undefined); // systemPrompt cancelled
+    vi.mocked(vscode.window.showQuickPick).mockResolvedValue({ label: 'llama3.2:3b', description: 'local' });
+
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [{ name: 'llama3.2:3b' }] }) } as any;
+    const { handleNewModelfile } = await import('./modelfiles.js');
+    await handleNewModelfile('/modelfiles', mockClient);
+
+    expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('validateInput for name rejects empty string', async () => {
+    let capturedValidator: ((v: string) => string | null) | undefined;
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showInputBox).mockImplementation(async (opts: any) => {
+      if (opts?.validateInput) capturedValidator = opts.validateInput;
+      return undefined;
+    });
+
+    const mockClient = { list: vi.fn().mockResolvedValue({ models: [] }) } as any;
+    const { handleNewModelfile } = await import('./modelfiles.js');
+    await handleNewModelfile('/modelfiles', mockClient);
+
+    expect(capturedValidator?.('')).toBe('Name is required');
+    expect(capturedValidator?.('valid-name')).toBeNull();
+    expect(capturedValidator?.('has/slash')).toContain('path separators');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleBuildModelfile — missing FROM
+// ---------------------------------------------------------------------------
+
+describe('handleBuildModelfile missing FROM', () => {
+  it('shows error when Modelfile has no FROM directive', async () => {
+    vi.resetModules();
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+      readFile: vi.fn().mockResolvedValue('SYSTEM "I have no base model"'),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      window: {
+        ...minimalVscodeMock().window,
+        showInputBox: vi.fn().mockResolvedValue('my-model'),
+        withProgress: vi.fn(async (_opts: unknown, task: (p: any) => Promise<void>) => task({ report: vi.fn() })),
+      },
+    }));
+
+    const vscode = await import('vscode');
+    const mockClient = { create: vi.fn() } as any;
+    const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
+    const item = new ModelfileItem({ fsPath: '/modelfiles/bad.modelfile' } as any);
+    await handleBuildModelfile(item, mockClient);
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('missing the required FROM'));
+    expect(mockClient.create).not.toHaveBeenCalled();
+  });
+
+  it('validateInput for model name rejects empty string', async () => {
+    vi.resetModules();
+
+    let capturedValidator: ((v: string) => string | null) | undefined;
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+      readFile: vi.fn().mockResolvedValue('FROM base'),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      window: {
+        ...minimalVscodeMock().window,
+        showInputBox: vi.fn().mockImplementation(async (opts: any) => {
+          if (opts?.validateInput) capturedValidator = opts.validateInput;
+          return undefined;
+        }),
+        withProgress: vi.fn(),
+      },
+    }));
+
+    const mockClient = { create: vi.fn() } as any;
+    const { handleBuildModelfile, ModelfileItem } = await import('./modelfiles.js');
+    const item = new ModelfileItem({ fsPath: '/modelfiles/test.modelfile' } as any);
+    await handleBuildModelfile(item, mockClient);
+
+    expect(capturedValidator?.('')).toBe('Model name is required');
+    expect(capturedValidator?.('valid-model')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleOpenModelfilesFolder — error path
+// ---------------------------------------------------------------------------
+
+describe('handleOpenModelfilesFolder error path', () => {
+  it('reports error when openExternal throws', async () => {
+    vi.resetModules();
+
+    vi.doMock('node:fs/promises', () => ({
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue([]),
+    }));
+
+    vi.doMock('vscode', () => ({
+      ...minimalVscodeMock(),
+      env: { openExternal: vi.fn().mockRejectedValue(new Error('cannot open')) },
+      Uri: { file: vi.fn((p: string) => ({ fsPath: p })) },
+      window: {
+        ...minimalVscodeMock().window,
+        showErrorMessage: vi.fn(),
+      },
+    }));
+
+    const vscode = await import('vscode');
+    const { handleOpenModelfilesFolder } = await import('./modelfiles.js');
+    await handleOpenModelfilesFolder('/modelfiles');
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to open Modelfiles folder'),
+    );
   });
 });

@@ -7,12 +7,14 @@ import * as vscode from 'vscode';
 import { getCloudOllamaClient, getOllamaClient, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
+import { reportError } from './errorHandler.js';
 import { createXmlStreamFilter, formatXmlLikeResponseForDisplay } from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
+import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
 
-const LANGUAGE_MODEL_VENDOR = 'selfagency-ollama';
+const LANGUAGE_MODEL_VENDOR = 'selfagency-opilot';
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:';
 let builtInOllamaConflictPromptInProgress = false;
 
@@ -20,23 +22,7 @@ function toRuntimeModelId(modelId: string): string {
   return modelId.startsWith(PROVIDER_MODEL_ID_PREFIX) ? modelId.slice(PROVIDER_MODEL_ID_PREFIX.length) : modelId;
 }
 
-function normalizeToolParameters(inputSchema: unknown): Tool['function']['parameters'] {
-  if (inputSchema && typeof inputSchema === 'object' && !Array.isArray(inputSchema)) {
-    return inputSchema as Tool['function']['parameters'];
-  }
-
-  // Ollama validates tools against JSON Schema object shape.
-  return {
-    type: 'object',
-    properties: {},
-  } as Tool['function']['parameters'];
-}
-
-function isToolsNotSupportedError(error: unknown): boolean {
-  return (
-    error instanceof Error && /does not support tools|error validating json schema|schemaerror/i.test(error.message)
-  );
-}
+// normalizeToolParameters/isToolsNotSupportedError moved to src/toolUtils.ts
 
 function isSelectedAction(selection: unknown, actionLabel: string): boolean {
   if (typeof selection === 'string') {
@@ -189,10 +175,44 @@ export async function handleConnectionTestFailure(
   const selection = await window.showErrorMessage(
     `Cannot connect to Ollama server at ${host}. Please check your ollama.host setting and authentication token.`,
     'Open Settings',
+    'Open Logs',
   );
   if (selection === 'Open Settings') {
     await commands.executeCommand('workbench.action.openSettings', 'ollama');
+    return;
   }
+
+  if (selection === 'Open Logs') {
+    // Attempt to open the Ollama server log file for the current platform
+    const logsPath = getOllamaServerLogPath();
+    if (logsPath) {
+      try {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(logsPath));
+        await vscode.window.showTextDocument(document, { preview: false });
+        return;
+      } catch {
+        void vscode.window.showWarningMessage(`Could not open Ollama logs at ${logsPath}.`);
+        return;
+      }
+    }
+    void vscode.window.showWarningMessage(
+      'Ollama logs are not available on this platform via file; try journalctl or check Ollama documentation.',
+    );
+  }
+}
+
+function getOllamaServerLogPath(): string | null {
+  const platform = process.platform;
+  if (platform === 'darwin') {
+    return join(homedir(), '.ollama', 'logs', 'server.log');
+  }
+  if (platform === 'win32') {
+    const localApp = process.env.LOCALAPPDATA;
+    if (localApp) return join(localApp, 'Ollama', 'server.log');
+    return null;
+  }
+  // On Linux we prefer journalctl; no single log file available
+  return null;
 }
 
 /**
@@ -205,7 +225,7 @@ export function setupChatParticipant(
 ): vscode.Disposable {
   const chat = chatApi || vscode.chat;
 
-  const participant = chat.createChatParticipant('ollama-copilot.ollama', participantHandler);
+  const participant = chat.createChatParticipant('opilot.ollama', participantHandler);
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
   return participant;
 }
@@ -353,6 +373,13 @@ export async function handleChatRequest(
 
     try {
       // Convert VS Code messages to the plain Ollama format expected by the client.
+      //
+      // XML context tag extraction (mirrors the logic in OllamaChatModelProvider.toOllamaMessages):
+      // VS Code Copilot injects structured IDE context (<selection>, <file>, etc.) as leading XML
+      // tags in the first user message. These are extracted from the start of user message text
+      // only (stopping as soon as a tag does not begin at index 0), collected into systemContextParts,
+      // deduplicated by tag name (most-recent wins), then prepended as a single Ollama `system` message.
+      // This keeps IDE-injected context separate from the conversational user turn.
       const XML_CONTEXT_TAG_RE = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>[\s\S]*?<\/\1>/gi;
       const systemContextParts: string[] = [];
 
@@ -447,7 +474,7 @@ export async function handleChatRequest(
             })) as ChatResponse;
           } catch (toolError) {
             if (isToolsNotSupportedError(toolError)) {
-              outputChannel?.warn?.(
+              outputChannel?.warn(
                 `[client] disabling tools for @ollama request on model ${modelId}: ${String(toolError)}`,
               );
               break;
@@ -526,7 +553,7 @@ export async function handleChatRequest(
             stream: true,
           });
         } else if (isToolsNotSupportedError(chatError)) {
-          outputChannel?.warn?.(`[client] model ${modelId} rejected tools; retrying stream without tools/thinking`);
+          outputChannel?.warn(`[client] model ${modelId} rejected tools; retrying stream without tools/thinking`);
           shouldThink = false;
           response = await effectiveClient.chat({
             model: modelId,
@@ -588,7 +615,7 @@ export async function handleChatRequest(
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      outputChannel?.exception('[client] chat participant request failed', error);
+      reportError(outputChannel, 'Chat participant request failed', error, { showToUser: true });
       const isCrashError = error instanceof Error && error.message.includes('model runner has unexpectedly stopped');
       if (isCrashError) {
         // Best-effort unload to keep behaviour consistent with the provider path.
@@ -765,7 +792,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const logOutputChannel =
     typeof vscode.window.createOutputChannel === 'function'
-      ? vscode.window.createOutputChannel('Ollama for Copilot', { log: true })
+      ? vscode.window.createOutputChannel('Opilot', { log: true })
       : undefined;
 
   const diagnostics = logOutputChannel
@@ -793,7 +820,7 @@ export async function activate(context: vscode.ExtensionContext) {
         `[client] language model provider vendor "${LANGUAGE_MODEL_VENDOR}" is already registered; skipping duplicate registration.`,
       );
     } else {
-      diagnostics.exception('[client] language model provider registration failed', error);
+      reportError(diagnostics, 'Language model provider registration failed', error, { showToUser: true });
       throw error;
     }
   }
@@ -801,16 +828,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const sidebarRegistration = registerSidebar(context, client, diagnostics, () => provider.refreshModels());
 
   const subscriptions: vscode.Disposable[] = [
-    vscode.commands.registerCommand('ollama-copilot.manageAuthToken', async () => {
+    vscode.commands.registerCommand('opilot.manageAuthToken', async () => {
       await provider.setAuthToken();
     }),
-    vscode.commands.registerCommand('ollama-copilot.refreshModels', () => {
+    vscode.commands.registerCommand('opilot.refreshModels', () => {
       provider.refreshModels();
       diagnostics.info('[client] model list refresh triggered');
     }),
-    vscode.commands.registerCommand('ollama-copilot.dumpPerformanceSnapshot', () => {
+    vscode.commands.registerCommand('opilot.dumpPerformanceSnapshot', () => {
       logPerformanceSnapshot(diagnostics, sidebarRegistration?.getProfilingSnapshot?.());
-      void vscode.window.showInformationMessage('Performance snapshot written to Ollama for Copilot logs');
+      void vscode.window.showInformationMessage('Performance snapshot written to Opilot logs');
     }),
     {
       dispose: () => stopLogStreaming(),
@@ -841,7 +868,7 @@ export async function activate(context: vscode.ExtensionContext) {
         await handleConnectionTestFailure(host);
       }
     } catch (error) {
-      diagnostics.exception('[client] connection test failed', error);
+      reportError(diagnostics, 'Connection test failed', error, { showToUser: true });
     }
   })();
 

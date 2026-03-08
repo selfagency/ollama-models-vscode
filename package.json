@@ -1,6 +1,6 @@
 {
-  "name": "ollama-copilot",
-  "displayName": "Ollama for GitHub Copilot",
+  "name": "opilot",
+  "displayName": "Opilot",
   "version": "0.1.0",
   "description": "Run Ollama models with full tool and vision support in GitHub Copilot Chat. Manage local and remote Ollama instances directly from VS Code.",
   "categories": [
@@ -29,13 +29,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/selfagency/ollama-copilot.git"
+    "url": "https://github.com/selfagency/opilot.git"
   },
   "qna": "marketplace",
   "publisher": "selfagency",
   "main": "./dist/extension.js",
   "scripts": {
     "compile": "task compile",
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview",
     "prepare": "husky",
     "test": "task unit-tests",
     "test:coverage": "task unit-test-coverage",
@@ -49,7 +52,7 @@
   "devDependencies": {
     "@go-task/cli": "^3.49.0",
     "@octokit/rest": "^22.0.1",
-    "@types/node": "^25.3.3",
+    "@types/node": "^25.3.5",
     "@types/vscode": "^1.109.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vscode/dts": "^0.4.1",
@@ -65,8 +68,8 @@
     "oxlint-tsgolint": "^0.16.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
+    "vitepress": "^1.6.4",
     "vitest": "^4.0.18",
-    "vscode": "^1.1.37",
     "zx": "^8.8.5"
   },
   "lint-staged": {
@@ -83,7 +86,7 @@
   "contributes": {
     "chatParticipants": [
       {
-        "id": "ollama-copilot.ollama",
+        "id": "opilot.ollama",
         "name": "ollama",
         "fullName": "Ollama",
         "description": "Chat with an Ollama model",
@@ -92,223 +95,223 @@
     ],
     "commands": [
       {
-        "command": "ollama-copilot.manageAuthToken",
+        "command": "opilot.manageAuthToken",
         "title": "Manage Ollama Auth Token",
         "icon": "$(key)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshModels",
+        "command": "opilot.refreshModels",
         "title": "Refresh Ollama Models",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.dumpPerformanceSnapshot",
+        "command": "opilot.dumpPerformanceSnapshot",
         "title": "Dump Performance Snapshot",
         "icon": "$(pulse)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.filterLocalModels",
+        "command": "opilot.filterLocalModels",
         "title": "Filter Local Models",
         "icon": "$(filter)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.clearLocalFilter",
+        "command": "opilot.clearLocalFilter",
         "title": "Clear Local Models Filter",
         "icon": "$(clear-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.filterCloudModels",
+        "command": "opilot.filterCloudModels",
         "title": "Filter Cloud Models",
         "icon": "$(filter)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.clearCloudFilter",
+        "command": "opilot.clearCloudFilter",
         "title": "Clear Cloud Models Filter",
         "icon": "$(clear-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.filterLibraryModels",
+        "command": "opilot.filterLibraryModels",
         "title": "Filter Library Models",
         "icon": "$(filter)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.clearLibraryFilter",
+        "command": "opilot.clearLibraryFilter",
         "title": "Clear Library Models Filter",
         "icon": "$(clear-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleLocalGrouping",
+        "command": "opilot.toggleLocalGrouping",
         "title": "Show as Flat List",
         "icon": "$(list-flat)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleLocalGroupingToTree",
+        "command": "opilot.toggleLocalGroupingToTree",
         "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleCloudGrouping",
+        "command": "opilot.toggleCloudGrouping",
         "title": "Show as Flat List",
         "icon": "$(list-flat)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleCloudGroupingToTree",
+        "command": "opilot.toggleCloudGroupingToTree",
         "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleLibraryGrouping",
+        "command": "opilot.toggleLibraryGrouping",
         "title": "Show as Flat List",
         "icon": "$(list-flat)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.toggleLibraryGroupingToTree",
+        "command": "opilot.toggleLibraryGroupingToTree",
         "title": "Show as Tree",
         "icon": "$(list-tree)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.collapseLocalModels",
+        "command": "opilot.collapseLocalModels",
         "title": "Collapse All Local Models",
         "icon": "$(collapse-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.collapseCloudModels",
+        "command": "opilot.collapseCloudModels",
         "title": "Collapse All Cloud Models",
         "icon": "$(collapse-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.collapseLibrary",
+        "command": "opilot.collapseLibrary",
         "title": "Collapse All Library Models",
         "icon": "$(collapse-all)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshSidebar",
+        "command": "opilot.refreshSidebar",
         "title": "Refresh Local Ollama Models",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshLocalModels",
+        "command": "opilot.refreshLocalModels",
         "title": "Refresh Local Ollama Models",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshLibrary",
+        "command": "opilot.refreshLibrary",
         "title": "Refresh Ollama Library",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.deleteModel",
+        "command": "opilot.deleteModel",
         "title": "Delete Ollama Model",
         "icon": "$(trash)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.pullModel",
+        "command": "opilot.pullModel",
         "title": "Pull Ollama Model",
         "icon": "$(cloud-download)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.stopModel",
+        "command": "opilot.stopModel",
         "title": "Stop Ollama Model",
         "icon": "$(debug-stop)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.startModel",
+        "command": "opilot.startModel",
         "title": "Start Ollama Model",
         "icon": "$(debug-start)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.pullModelFromLibrary",
+        "command": "opilot.pullModelFromLibrary",
         "title": "Pull Ollama Model",
         "icon": "$(cloud-download)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.openLibraryModelPage",
+        "command": "opilot.openLibraryModelPage",
         "title": "Open Ollama Model Page",
         "icon": "$(link)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshCloudModels",
+        "command": "opilot.refreshCloudModels",
         "title": "Refresh Ollama Cloud Models",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.loginCloud",
+        "command": "opilot.loginCloud",
         "title": "Login to Ollama Cloud",
         "icon": "$(account)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.openCloudModel",
+        "command": "opilot.openCloudModel",
         "title": "Open Ollama Cloud Model Page",
         "icon": "$(link)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.startCloudModel",
+        "command": "opilot.startCloudModel",
         "title": "Run Ollama Cloud Model",
         "icon": "$(debug-start)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.stopCloudModel",
+        "command": "opilot.stopCloudModel",
         "title": "Stop Ollama Cloud Model",
         "icon": "$(debug-stop)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.refreshModelfiles",
+        "command": "opilot.refreshModelfiles",
         "title": "Refresh Modelfiles",
         "icon": "$(refresh)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.newModelfile",
+        "command": "opilot.newModelfile",
         "title": "New Modelfile",
         "icon": "$(add)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.editModelfile",
+        "command": "opilot.editModelfile",
         "title": "Edit Modelfile",
         "icon": "$(edit)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.buildModelfile",
+        "command": "opilot.buildModelfile",
         "title": "Build Model from Modelfile",
         "icon": "$(rocket)",
         "category": "Ollama"
       },
       {
-        "command": "ollama-copilot.openModelfilesFolder",
+        "command": "opilot.openModelfilesFolder",
         "title": "Open Modelfiles Folder",
         "icon": "$(folder-opened)",
         "category": "Ollama"
@@ -379,9 +382,9 @@
     ],
     "languageModelChatProviders": [
       {
-        "vendor": "selfagency-ollama",
+        "vendor": "selfagency-opilot",
         "displayName": "🦙 Ollama",
-        "managementCommand": "ollama-copilot.manageAuthToken"
+        "managementCommand": "opilot.manageAuthToken"
       }
     ],
     "languages": [
@@ -402,184 +405,184 @@
     "menus": {
       "view/title": [
         {
-          "command": "ollama-copilot.manageAuthToken",
+          "command": "opilot.manageAuthToken",
           "when": "view == ollama-local-models",
           "group": "navigation@0"
         },
         {
-          "command": "ollama-copilot.filterLocalModels",
+          "command": "opilot.filterLocalModels",
           "when": "view == ollama-local-models && !ollama.localFilterActive",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.clearLocalFilter",
+          "command": "opilot.clearLocalFilter",
           "when": "view == ollama-local-models && ollama.localFilterActive",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.toggleLocalGrouping",
+          "command": "opilot.toggleLocalGrouping",
           "when": "view == ollama-local-models && ollama.localGrouped",
           "group": "navigation@2"
         },
         {
-          "command": "ollama-copilot.toggleLocalGroupingToTree",
+          "command": "opilot.toggleLocalGroupingToTree",
           "when": "view == ollama-local-models && !ollama.localGrouped",
           "group": "navigation@2"
         },
         {
-          "command": "ollama-copilot.refreshLocalModels",
+          "command": "opilot.refreshLocalModels",
           "when": "view == ollama-local-models",
           "group": "navigation@3"
         },
         {
-          "command": "ollama-copilot.collapseLocalModels",
+          "command": "opilot.collapseLocalModels",
           "when": "view == ollama-local-models",
           "group": "navigation@4"
         },
         {
-          "command": "ollama-copilot.filterLibraryModels",
+          "command": "opilot.filterLibraryModels",
           "when": "view == ollama-library-models && !ollama.libraryFilterActive",
           "group": "navigation@0"
         },
         {
-          "command": "ollama-copilot.clearLibraryFilter",
+          "command": "opilot.clearLibraryFilter",
           "when": "view == ollama-library-models && ollama.libraryFilterActive",
           "group": "navigation@0"
         },
         {
-          "command": "ollama-copilot.toggleLibraryGrouping",
+          "command": "opilot.toggleLibraryGrouping",
           "when": "view == ollama-library-models && ollama.libraryGrouped",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.toggleLibraryGroupingToTree",
+          "command": "opilot.toggleLibraryGroupingToTree",
           "when": "view == ollama-library-models && !ollama.libraryGrouped",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.refreshLibrary",
+          "command": "opilot.refreshLibrary",
           "when": "view == ollama-library-models",
           "group": "navigation@2"
         },
         {
-          "command": "ollama-copilot.collapseLibrary",
+          "command": "opilot.collapseLibrary",
           "when": "view == ollama-library-models",
           "group": "navigation@3"
         },
         {
-          "command": "ollama-copilot.loginCloud",
+          "command": "opilot.loginCloud",
           "when": "view == ollama-cloud-models",
           "group": "navigation@0"
         },
         {
-          "command": "ollama-copilot.filterCloudModels",
+          "command": "opilot.filterCloudModels",
           "when": "view == ollama-cloud-models && !ollama.cloudFilterActive",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.clearCloudFilter",
+          "command": "opilot.clearCloudFilter",
           "when": "view == ollama-cloud-models && ollama.cloudFilterActive",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.toggleCloudGrouping",
+          "command": "opilot.toggleCloudGrouping",
           "when": "view == ollama-cloud-models && ollama.cloudGrouped",
           "group": "navigation@2"
         },
         {
-          "command": "ollama-copilot.toggleCloudGroupingToTree",
+          "command": "opilot.toggleCloudGroupingToTree",
           "when": "view == ollama-cloud-models && !ollama.cloudGrouped",
           "group": "navigation@2"
         },
         {
-          "command": "ollama-copilot.refreshCloudModels",
+          "command": "opilot.refreshCloudModels",
           "when": "view == ollama-cloud-models",
           "group": "navigation@3"
         },
         {
-          "command": "ollama-copilot.collapseCloudModels",
+          "command": "opilot.collapseCloudModels",
           "when": "view == ollama-cloud-models",
           "group": "navigation@4"
         },
         {
-          "command": "ollama-copilot.newModelfile",
+          "command": "opilot.newModelfile",
           "when": "view == ollama-modelfiles",
           "group": "navigation@0"
         },
         {
-          "command": "ollama-copilot.openModelfilesFolder",
+          "command": "opilot.openModelfilesFolder",
           "when": "view == ollama-modelfiles",
           "group": "navigation@1"
         },
         {
-          "command": "ollama-copilot.refreshModelfiles",
+          "command": "opilot.refreshModelfiles",
           "when": "view == ollama-modelfiles",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "ollama-copilot.deleteModel",
+          "command": "opilot.deleteModel",
           "when": "view == ollama-local-models && viewItem == local-stopped",
           "group": "inline@3"
         },
         {
-          "command": "ollama-copilot.stopModel",
+          "command": "opilot.stopModel",
           "when": "view == ollama-local-models && viewItem == local-running",
           "group": "inline@2"
         },
         {
-          "command": "ollama-copilot.startModel",
+          "command": "opilot.startModel",
           "when": "view == ollama-local-models && viewItem == local-stopped",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.pullModelFromLibrary",
+          "command": "opilot.pullModelFromLibrary",
           "when": "view == ollama-library-models && viewItem == library-model-variant",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.pullModelFromLibrary",
+          "command": "opilot.pullModelFromLibrary",
           "when": "view == ollama-library-models && viewItem == library-model-downloaded-variant",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.openLibraryModelPage",
+          "command": "opilot.openLibraryModelPage",
           "when": "view == ollama-library-models && viewItem == library-model",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.openCloudModel",
+          "command": "opilot.openCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.startCloudModel",
+          "command": "opilot.startCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
           "group": "inline@2"
         },
         {
-          "command": "ollama-copilot.deleteModel",
+          "command": "opilot.deleteModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
           "group": "inline@3"
         },
         {
-          "command": "ollama-copilot.openCloudModel",
+          "command": "opilot.openCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-running",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.stopCloudModel",
+          "command": "opilot.stopCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-running",
           "group": "inline@2"
         },
         {
-          "command": "ollama-copilot.editModelfile",
+          "command": "opilot.editModelfile",
           "when": "view == ollama-modelfiles && viewItem == modelfile",
           "group": "inline@1"
         },
         {
-          "command": "ollama-copilot.buildModelfile",
+          "command": "opilot.buildModelfile",
           "when": "view == ollama-modelfiles && viewItem == modelfile",
           "group": "inline@2"
         }
@@ -620,13 +623,21 @@
     }
   },
   "activationEvents": [
-    "onChatParticipant:ollama-copilot.ollama",
-    "onLanguageModelChatProvider:selfagency-ollama",
+    "onChatParticipant:opilot.ollama",
+    "onLanguageModelChatProvider:selfagency-opilot",
     "onStartupFinished"
   ],
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.109.0"
   },
-  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017"
+  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
+  "pnpm": {
+    "overrides": {
+      "minimist": "^1.2.8",
+      "minimatch": "^10.2.4",
+      "serialize-javascript": "^7.0.4",
+      "diff": "^8.0.3"
+    }
+  }
 }

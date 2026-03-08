@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import type { CreateRequest, Message, Ollama } from 'ollama';
 import * as vscode from 'vscode';
 import type { DiagnosticsLogger } from './diagnostics.js';
+import { reportError } from './errorHandler.js';
 
 // ---------------------------------------------------------------------------
 // Hover documentation for Modelfile keywords
@@ -25,6 +26,24 @@ export const KEYWORD_DOCS: Record<string, string> = {
   REQUIRES: '**REQUIRES** — Minimum Ollama version required by this Modelfile.\n\n```\nREQUIRES 0.14.0\n```',
 };
 
+/**
+ * Hover documentation for individual Modelfile PARAMETER keywords.
+ *
+ * Each entry maps a parameter name (as it appears after `PARAMETER` in a
+ * Modelfile) to a Markdown string that is shown in the VS Code hover provider.
+ *
+ * The set of recognised names is derived from the Ollama Modelfile spec:
+ * https://github.com/ollama/ollama/blob/main/docs/modelfile.md
+ *
+ * Value types:
+ * - `float`  — temperature, top_p, min_p, repeat_penalty, presence_penalty,
+ *              frequency_penalty, mirostat_tau, mirostat_eta
+ * - `int`    — num_ctx, top_k, seed, num_predict, repeat_last_n, mirostat
+ * - `string` — stop (may appear multiple times for multiple stop sequences)
+ *
+ * When a word after `PARAMETER` matches one of these keys the hover provider
+ * falls through from KEYWORD_DOCS to PARAMETER_DOCS (see provideHover).
+ */
 const PARAMETER_DOCS: Record<string, string> = {
   temperature: '`temperature` — Controls creativity (0.0–2.0). Higher = more creative. Default: 0.8',
   num_ctx: '`num_ctx` — Context window size in tokens. Default: 2048',
@@ -61,6 +80,18 @@ interface ParsedModelfile {
  * Parse Modelfile content into structured fields for the Ollama create API.
  *
  * Supports multi-line values delimited by triple-quotes (`"""`).
+ *
+ * Security model:
+ * - All field values (`FROM`, `SYSTEM`, `TEMPLATE`, etc.) are treated as opaque
+ *   strings and forwarded to the locally running Ollama server via its create API.
+ *   The extension does not interpret or execute these values directly, so template
+ *   injection and path traversal attacks in this layer affect only the user's own
+ *   local Ollama server — which runs with the user's own OS permissions.
+ * - The `FROM` and `ADAPTER` fields may contain file system paths. The extension
+ *   passes these verbatim to Ollama; it does not open or read those files itself.
+ * - `PARAMETER` values are coerced to numbers when numeric; only the PARAMETER_DOCS
+ *   key names (not the values) are used for hover documentation. No user-supplied
+ *   parameter value reaches any context where injection is possible.
  */
 export function parseModelfile(content: string): ParsedModelfile {
   const result: ParsedModelfile = {};
@@ -284,7 +315,7 @@ export class ModelfilesProvider implements vscode.TreeDataProvider<ModelfileItem
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(e => new ModelfileItem(vscode.Uri.file(join(this.folderPath, e.name))));
     } catch (error) {
-      this.log?.error(`[client] failed to read modelfiles folder: ${String(error)}`);
+      reportError(this.log, 'Failed to read modelfiles folder', error, { showToUser: false });
       return [];
     }
   }
@@ -398,12 +429,10 @@ export async function handleBuildModelfile(
         }
 
         log?.info(`[client] model built: ${modelName}`);
-        await vscode.commands.executeCommand('ollama-copilot.refreshLocalModels');
+        await vscode.commands.executeCommand('opilot.refreshLocalModels');
         vscode.window.showInformationMessage(`Model "${modelName}" built successfully`);
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        log?.error(`[client] failed to build model: ${msg}`);
-        vscode.window.showErrorMessage(`Failed to build model: ${msg}`);
+        reportError(log, 'Failed to build model', error, { showToUser: true });
       }
     },
   );
@@ -419,9 +448,7 @@ export async function handleOpenModelfilesFolder(folderPath: string, log?: Diagn
       await vscode.commands.executeCommand('revealFileInOS', folderUri);
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    log?.error(`[client] failed to open modelfiles folder: ${msg}`);
-    vscode.window.showErrorMessage(`Failed to open Modelfiles folder: ${msg}`);
+    reportError(log, 'Failed to open Modelfiles folder', error, { showToUser: true });
   }
 }
 
@@ -503,17 +530,15 @@ export function registerModelfileManager(
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('ollama-modelfiles', provider),
-    vscode.commands.registerCommand('ollama-copilot.refreshModelfiles', () => provider.refresh()),
-    vscode.commands.registerCommand('ollama-copilot.newModelfile', () =>
-      handleNewModelfile(provider.getFolderPath(), client),
-    ),
-    vscode.commands.registerCommand('ollama-copilot.editModelfile', (item: ModelfileItem) =>
+    vscode.commands.registerCommand('opilot.refreshModelfiles', () => provider.refresh()),
+    vscode.commands.registerCommand('opilot.newModelfile', () => handleNewModelfile(provider.getFolderPath(), client)),
+    vscode.commands.registerCommand('opilot.editModelfile', (item: ModelfileItem) =>
       vscode.commands.executeCommand('vscode.open', item.uri),
     ),
-    vscode.commands.registerCommand('ollama-copilot.buildModelfile', (item: ModelfileItem) =>
+    vscode.commands.registerCommand('opilot.buildModelfile', (item: ModelfileItem) =>
       handleBuildModelfile(item, client, log),
     ),
-    vscode.commands.registerCommand('ollama-copilot.openModelfilesFolder', async () =>
+    vscode.commands.registerCommand('opilot.openModelfilesFolder', async () =>
       handleOpenModelfilesFolder(provider.getFolderPath(), log),
     ),
     vscode.languages.registerHoverProvider({ language: 'modelfile' }, createHoverProvider()),

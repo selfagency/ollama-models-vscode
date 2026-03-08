@@ -18,7 +18,7 @@ let extension;
 
 exports.run = async () => {
   // Get the extension
-  extension = vscode.extensions.getExtension('selfagency.ollama-copilot');
+  extension = vscode.extensions.getExtension('selfagency.opilot');
   assert.ok(extension, 'Extension not found');
 
   // Activate the extension
@@ -41,29 +41,29 @@ exports.run = async () => {
   // ---------------------------------------------------------------------------
 
   const expectedCommands = [
-    'ollama-copilot.manageAuthToken',
-    'ollama-copilot.refreshLocalModels',
-    'ollama-copilot.refreshCloudModels',
-    'ollama-copilot.refreshLibrary',
-    'ollama-copilot.startModel',
-    'ollama-copilot.stopModel',
-    'ollama-copilot.deleteModel',
-    'ollama-copilot.pullModel',
-    'ollama-copilot.openLibraryModelPage',
-    'ollama-copilot.filterLocalModels',
-    'ollama-copilot.clearLocalFilter',
-    'ollama-copilot.toggleLocalGrouping',
-    'ollama-copilot.filterCloudModels',
-    'ollama-copilot.clearCloudFilter',
-    'ollama-copilot.toggleCloudGrouping',
-    'ollama-copilot.filterLibraryModels',
-    'ollama-copilot.clearLibraryFilter',
-    'ollama-copilot.toggleLibraryGrouping',
-    'ollama-copilot.newModelfile',
-    'ollama-copilot.editModelfile',
-    'ollama-copilot.buildModelfile',
-    'ollama-copilot.openModelfilesFolder',
-    'ollama-copilot.refreshModelfiles',
+    'opilot.manageAuthToken',
+    'opilot.refreshLocalModels',
+    'opilot.refreshCloudModels',
+    'opilot.refreshLibrary',
+    'opilot.startModel',
+    'opilot.stopModel',
+    'opilot.deleteModel',
+    'opilot.pullModel',
+    'opilot.openLibraryModelPage',
+    'opilot.filterLocalModels',
+    'opilot.clearLocalFilter',
+    'opilot.toggleLocalGrouping',
+    'opilot.filterCloudModels',
+    'opilot.clearCloudFilter',
+    'opilot.toggleCloudGrouping',
+    'opilot.filterLibraryModels',
+    'opilot.clearLibraryFilter',
+    'opilot.toggleLibraryGrouping',
+    'opilot.newModelfile',
+    'opilot.editModelfile',
+    'opilot.buildModelfile',
+    'opilot.openModelfilesFolder',
+    'opilot.refreshModelfiles',
   ];
 
   for (const cmd of expectedCommands) {
@@ -75,16 +75,16 @@ exports.run = async () => {
   // Sidebar/Tree View Providers
   // ---------------------------------------------------------------------------
 
-  assert.ok(commands.includes('ollama-copilot.refreshLocalModels'), 'Local models tree view not properly initialized');
+  assert.ok(commands.includes('opilot.refreshLocalModels'), 'Local models tree view not properly initialized');
   console.log('✓ Local models tree view initialized');
 
-  assert.ok(commands.includes('ollama-copilot.refreshCloudModels'), 'Cloud models tree view not properly initialized');
+  assert.ok(commands.includes('opilot.refreshCloudModels'), 'Cloud models tree view not properly initialized');
   console.log('✓ Cloud models tree view initialized');
 
-  assert.ok(commands.includes('ollama-copilot.refreshLibrary'), 'Library models tree view not properly initialized');
+  assert.ok(commands.includes('opilot.refreshLibrary'), 'Library models tree view not properly initialized');
   console.log('✓ Library models tree view initialized');
 
-  assert.ok(commands.includes('ollama-copilot.newModelfile'), 'Modelfiles tree view not properly initialized');
+  assert.ok(commands.includes('opilot.newModelfile'), 'Modelfiles tree view not properly initialized');
   console.log('✓ Modelfiles tree view initialized');
 
   // ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
-# Ollama for Copilot
+# Opilot — Ollama for GitHub Copilot VS Code Extension
 
-[![Tests](https://github.com/selfagency/ollama-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/ollama-copilot/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/selfagency/ollama-copilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/ollama-copilot)
+[![Tests](https://github.com/selfagency/opilot/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/opilot/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/selfagency/opilot/graph/badge.svg?token=W9kOrFPSQ1)](https://codecov.io/gh/selfagency/opilot)
 
 <p align="center">
-  <img src="logo.png" alt="Ollama Copilot" width="128" height="128">
+  <img src="logo.png" alt="Opilot" width="128" height="128">
 </p>
 
 <p align="center">

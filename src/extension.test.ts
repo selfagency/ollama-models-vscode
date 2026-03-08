@@ -112,7 +112,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(registerLanguageModelChatProvider).toHaveBeenCalledWith('selfagency-ollama', expect.anything());
+    expect(registerLanguageModelChatProvider).toHaveBeenCalledWith('selfagency-opilot', expect.anything());
   });
 
   it('does not throw when provider vendor is already registered', async () => {
@@ -586,7 +586,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(createOutputChannel).toHaveBeenCalledWith('Ollama for Copilot', expect.any(Object));
+    expect(createOutputChannel).toHaveBeenCalledWith('Opilot', expect.any(Object));
   });
 
   it('throws on unhandled registration error', async () => {
@@ -802,7 +802,7 @@ describe('activate', () => {
     const ext = await import('./extension.js');
     await ext.activate({ subscriptions: [], extensionUri: { fsPath: '' } } as any);
 
-    expect(registerCommand).toHaveBeenCalledWith('ollama-copilot.manageAuthToken', expect.any(Function));
+    expect(registerCommand).toHaveBeenCalledWith('opilot.manageAuthToken', expect.any(Function));
   });
 
   it('handles autoStartLogStreaming configuration changes', async () => {
@@ -1115,7 +1115,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'what is the meaning of life?',
-      model: { vendor: 'selfagency-ollama', id: 'qwen3:8b' },
+      model: { vendor: 'selfagency-opilot', id: 'qwen3:8b' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1187,7 +1187,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'hi',
-      model: { vendor: 'selfagency-ollama', id: 'qwen3:8b' },
+      model: { vendor: 'selfagency-opilot', id: 'qwen3:8b' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1258,7 +1258,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: "what's the weather?",
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1329,7 +1329,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
 
     const request = {
       prompt: 'hello',
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
     };
 
     await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
@@ -1408,7 +1408,7 @@ describe('handleChatRequest direct Ollama path (thinking + tools)', () => {
     const mockClient = { chat };
     const request = {
       prompt: '@ollama hello',
-      model: { vendor: 'selfagency-ollama', id: 'llama3.2:latest' },
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
       toolInvocationToken: 'tok-1',
     };
 
@@ -1444,6 +1444,7 @@ describe('handleConnectionTestFailure', () => {
     expect(showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Cannot connect to Ollama server'),
       'Open Settings',
+      'Open Logs',
     );
     expect(executeCommand).toHaveBeenCalledWith('workbench.action.openSettings', 'ollama');
   });
@@ -1458,6 +1459,7 @@ describe('handleConnectionTestFailure', () => {
     expect(showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('Cannot connect to Ollama server'),
       'Open Settings',
+      'Open Logs',
     );
     expect(executeCommand).not.toHaveBeenCalled();
   });
@@ -1477,7 +1479,7 @@ describe('setupChatParticipant', () => {
 
     const result = ext.setupChatParticipant(mockContext as any, mockHandler, { createChatParticipant } as any);
 
-    expect(createChatParticipant).toHaveBeenCalledWith('ollama-copilot.ollama', mockHandler);
+    expect(createChatParticipant).toHaveBeenCalledWith('opilot.ollama', mockHandler);
     expect(mockParticipant.iconPath).toBeDefined();
     expect(result).toBe(mockParticipant);
   });
@@ -1493,7 +1495,7 @@ describe('handleChatRequest errors', () => {
     const mockRequest = {
       prompt: 'test',
       model: {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: vi.fn(() => {
           throw new Error('Model error');
         }),
@@ -1556,7 +1558,7 @@ describe('handleChatRequest model selection', () => {
     });
     const mockSelectChatModels = vi
       .fn()
-      .mockResolvedValue([{ vendor: 'selfagency-ollama', sendRequest: mockSendRequest }]);
+      .mockResolvedValue([{ vendor: 'selfagency-opilot', sendRequest: mockSendRequest }]);
 
     vi.doMock('vscode', () => ({
       LanguageModelTextPart: LMTextPart,
@@ -1615,7 +1617,7 @@ describe('handleChatRequest model selection', () => {
     const mockMarkdown = vi.fn();
     const mockRequest = {
       prompt: 'test',
-      model: { vendor: 'selfagency-ollama', sendRequest: mockSendRequest },
+      model: { vendor: 'selfagency-opilot', sendRequest: mockSendRequest },
     };
 
     await ext.handleChatRequest(
@@ -1667,7 +1669,7 @@ describe('handleChatRequest model selection', () => {
     const mockInvokeTool = vi.fn().mockResolvedValue({ content: [new LMTextPart('tool-result')] });
     const mockSelectChatModels = vi.fn().mockResolvedValue([
       {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: mockSendRequest,
       },
     ]);
@@ -1751,7 +1753,7 @@ describe('handleChatRequest model selection', () => {
     const mockInvokeTool = vi.fn().mockRejectedValue(new Error('tool crashed'));
     const mockSelectChatModels = vi.fn().mockResolvedValue([
       {
-        vendor: 'selfagency-ollama',
+        vendor: 'selfagency-opilot',
         sendRequest: mockSendRequest,
       },
     ]);
@@ -2354,5 +2356,164 @@ describe('startLogStreaming inner callbacks', () => {
 
     // Trigger exit callback (covers exit handler)
     fakeProcess.emit('exit', 0, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deactivate
+// ---------------------------------------------------------------------------
+
+describe('deactivate', () => {
+  it('exports deactivate and it does not throw', async () => {
+    const ext = await import('./extension.js');
+    expect(typeof ext.deactivate).toBe('function');
+    expect(() => ext.deactivate()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleConnectionTestFailure — Open Logs path
+// ---------------------------------------------------------------------------
+
+describe('handleConnectionTestFailure Open Logs path', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('opens log file when Open Logs is selected and file exists', async () => {
+    // Force darwin so getOllamaServerLogPath() returns a path on CI Linux too
+    const platformDesc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+
+    const openTextDocument = vi.fn().mockResolvedValue({ uri: { fsPath: '/fake/server.log' } });
+    const showTextDocument = vi.fn().mockResolvedValue(undefined);
+    const showWarningMessage = vi.fn();
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        constructor(public label: string) {}
+      },
+      TreeItemCollapsibleState: { None: 0 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      Uri: { file: vi.fn((p: string) => ({ fsPath: p })), joinPath: vi.fn() },
+      workspace: {
+        openTextDocument,
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      window: {
+        showTextDocument,
+        showWarningMessage,
+        showErrorMessage: vi.fn(),
+        createOutputChannel: vi.fn(() => ({
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+          show: vi.fn(),
+        })),
+      },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+      lm: { registerLanguageModelChatProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      languages: { registerInlineCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      ProgressLocation: { Notification: 15 },
+      LanguageModelChatMessage: { User: vi.fn(), Assistant: vi.fn() },
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      ChatResponseMarkdownPart: class {
+        value: any = {};
+      },
+      InlineCompletionItem: class {
+        constructor(public readonly insertText: string) {}
+      },
+      CancellationToken: class {},
+    }));
+
+    const showErrorMessage = vi.fn().mockResolvedValue('Open Logs');
+    const ext = await import('./extension.js');
+    await ext.handleConnectionTestFailure('http://localhost:11434', { showErrorMessage }, { executeCommand: vi.fn() });
+
+    // openTextDocument should be called with the platform-specific log path
+    expect(openTextDocument).toHaveBeenCalled();
+    expect(showTextDocument).toHaveBeenCalled();
+
+    // Restore process.platform
+    if (platformDesc) {
+      Object.defineProperty(process, 'platform', platformDesc);
+    }
+  });
+
+  it('shows warning when openTextDocument throws', async () => {
+    // Force darwin so getOllamaServerLogPath() returns a path on CI Linux too
+    const platformDesc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+
+    const openTextDocument = vi.fn().mockRejectedValue(new Error('file not found'));
+    const showWarningMessage = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('vscode', () => ({
+      TreeItem: class {
+        constructor(public label: string) {}
+      },
+      TreeItemCollapsibleState: { None: 0 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      Uri: { file: vi.fn((p: string) => ({ fsPath: p })), joinPath: vi.fn() },
+      workspace: {
+        openTextDocument,
+        getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      window: {
+        showTextDocument: vi.fn(),
+        showWarningMessage,
+        showErrorMessage: vi.fn(),
+        createOutputChannel: vi.fn(() => ({
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+          show: vi.fn(),
+        })),
+      },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+      lm: { registerLanguageModelChatProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      languages: { registerInlineCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })) },
+      ProgressLocation: { Notification: 15 },
+      LanguageModelChatMessage: { User: vi.fn(), Assistant: vi.fn() },
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      ChatResponseMarkdownPart: class {
+        value: any = {};
+      },
+      InlineCompletionItem: class {
+        constructor(public readonly insertText: string) {}
+      },
+      CancellationToken: class {},
+    }));
+
+    const showErrorMessage = vi.fn().mockResolvedValue('Open Logs');
+    const ext = await import('./extension.js');
+
+    await ext.handleConnectionTestFailure('http://localhost:11434', { showErrorMessage }, { executeCommand: vi.fn() });
+    expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Could not open Ollama logs'));
+
+    // Restore process.platform
+    if (platformDesc) {
+      Object.defineProperty(process, 'platform', platformDesc);
+    }
   });
 });

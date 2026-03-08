@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-blpq
 title: Test cloud rescue logic and model cache race conditions
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-03-08T16:40:05Z
-updated_at: 2026-03-08T16:40:05Z
+updated_at: 2026-03-08T17:29:32Z
 ---
 
 Add missing test coverage for the cloud-rescue fallback logic and concurrent model-cache access in `src/provider.ts`.

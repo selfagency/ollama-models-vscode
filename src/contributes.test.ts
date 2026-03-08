@@ -136,13 +136,13 @@ describe('package contributes integrity', () => {
   it('does not declare the previewLibraryModel command', () => {
     const pkg = loadPackageJson();
     const commands = (pkg.contributes?.commands ?? []).map(c => c.command);
-    expect(commands).not.toContain('ollama-copilot.previewLibraryModel');
+    expect(commands).not.toContain('opilot.previewLibraryModel');
   });
 
   it('does not include previewLibraryModel in context menus', () => {
     const pkg = loadPackageJson();
     const contextCommands = (pkg.contributes?.menus?.['view/item/context'] ?? []).map(m => m.command);
-    expect(contextCommands).not.toContain('ollama-copilot.previewLibraryModel');
+    expect(contextCommands).not.toContain('opilot.previewLibraryModel');
   });
 
   it('all grammar keywords have hover documentation', () => {

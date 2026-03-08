@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-6m40
 title: Test sidebar listener disposal and lifecycle
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-03-08T16:40:16Z
-updated_at: 2026-03-08T16:40:16Z
+updated_at: 2026-03-08T17:34:21Z
 ---
 
 Add unit tests confirming that disposables registered by sidebar event listeners are properly cleaned up when their parent tree-view or context is disposed.

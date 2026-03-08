@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-yexf
 title: 'Security: review input sanitization and error message exposure'
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-03-08T16:41:20Z
-updated_at: 2026-03-08T16:41:20Z
+updated_at: 2026-03-08T17:41:46Z
 ---
 
 Review user-facing and network-facing input handling for injection risks, and audit error messages to ensure no sensitive information (credentials, paths, internal state) is exposed to end users.

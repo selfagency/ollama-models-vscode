@@ -1,4 +1,4 @@
-# Ollama for Copilot — Architecture Overview
+# Opilot — Architecture Overview
 
 This document gives a high-level overview of the extension architecture and key runtime flows.
 
