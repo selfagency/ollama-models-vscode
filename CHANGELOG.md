@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-09
+
+## What's Changed
+
+- feat: switch local models to native Ollama SDK with thinking support by @selfagency in https://github.com/selfagency/opilot/pull/46
+
+**Full Changelog**: https://github.com/selfagency/opilot/compare/v0.1.2-pre...v0.1.3-pre
+
+_Source: changes from v0.1.2-pre to v0.1.3-pre._
+
 ## [0.1.2] - 2026-03-09
 
 ## What's Changed
