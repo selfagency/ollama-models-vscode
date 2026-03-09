@@ -39,6 +39,7 @@ import {
 import { chatCompletionsOnce, chatCompletionsStream } from './openaiCompat.js';
 import { ollamaMessagesToOpenAICompat, ollamaToolsToOpenAICompat } from './openaiCompatMapping.js';
 import { isToolsNotSupportedError, normalizeToolParameters } from './toolUtils.js';
+import { ThinkingParser } from './thinkingParser.js';
 
 const MODEL_LIST_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MODEL_INFO_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -795,6 +796,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       let contentStarted = false;
       let emittedOutput = false;
       const xmlFilter = createXmlStreamFilter();
+      // Only parse <think> tags client-side on the cloud/OpenAI-compat path.
+      // Native SDK path gets message.thinking pre-split by Ollama's server-side parser.
+      const thinkingParser = isCloudModel && shouldThink ? new ThinkingParser() : null;
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -812,19 +816,37 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           emittedOutput = true;
         }
 
-        // Stream text chunks immediately as they arrive
+        // Stream text chunks — run through thinking tag parser if on cloud path
         if (chunk.message?.content) {
-          if (thinkingStarted && !contentStarted) {
-            progress.report(new LanguageModelTextPart('\n\n---\n\n'));
-            contentStarted = true;
+          let thinkingChunk = '';
+          let contentChunk = chunk.message.content;
+
+          if (thinkingParser) {
+            [thinkingChunk, contentChunk] = thinkingParser.addContent(chunk.message.content);
+          }
+
+          if (thinkingChunk) {
+            if (!thinkingStarted) {
+              progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
+              thinkingStarted = true;
+              emittedOutput = true;
+            }
+            progress.report(new LanguageModelTextPart(thinkingChunk));
             emittedOutput = true;
           }
-          this.outputChannel.debug(`[client] streaming chunk: ${chunk.message.content.substring(0, 50)}`);
-          // Filter context tags using SAX parser - handles incomplete tags across chunk boundaries
-          const cleanContent = xmlFilter.write(chunk.message.content);
-          if (cleanContent) {
-            progress.report(new LanguageModelTextPart(cleanContent));
-            emittedOutput = true;
+
+          if (contentChunk) {
+            if (thinkingStarted && !contentStarted) {
+              progress.report(new LanguageModelTextPart('\n\n---\n\n'));
+              contentStarted = true;
+              emittedOutput = true;
+            }
+            this.outputChannel.debug(`[client] streaming chunk: ${contentChunk.substring(0, 50)}`);
+            const cleanContent = xmlFilter.write(contentChunk);
+            if (cleanContent) {
+              progress.report(new LanguageModelTextPart(cleanContent));
+              emittedOutput = true;
+            }
           }
         }
 
