@@ -370,6 +370,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable Ollama inline code completions."
+        },
+        "ollama.hideThinkingContent": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Hide thinking content in chat responses. When enabled, only the thinking indicator (`💭 **Thinking**`) will be shown without the actual reasoning tokens."
         }
       }
     },

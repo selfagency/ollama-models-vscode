@@ -750,6 +750,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     // shouldThink, the first rescue attempts should still try with think=true.
     const initialShouldThink = shouldThink;
 
+    // Check if user wants to hide thinking content (only show header)
+    const hideThinkingContent = workspace.getConfiguration('ollama').get<boolean>('hideThinkingContent', true);
+
     try {
       let response: AsyncIterable<ChatResponse>;
       let effectiveTools = tools;
@@ -827,8 +830,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             thinkingStarted = true;
             emittedOutput = true;
           }
-          progress.report(new LanguageModelTextPart(chunk.message.thinking));
-          emittedOutput = true;
+          if (!hideThinkingContent) {
+            progress.report(new LanguageModelTextPart(chunk.message.thinking));
+            emittedOutput = true;
+          }
         }
 
         // Stream text chunks — run through thinking tag parser if on cloud path
@@ -844,9 +849,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             if (!thinkingStarted) {
               progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
               thinkingStarted = true;
+              emittedOutput = true;
             }
-            progress.report(new LanguageModelTextPart(thinkingChunk));
-            emittedOutput = true;
+            if (!hideThinkingContent) {
+              progress.report(new LanguageModelTextPart(thinkingChunk));
+              emittedOutput = true;
+            }
           }
 
           if (contentChunk) {
@@ -930,7 +938,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
         if (fallback.message?.thinking) {
           progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
-          progress.report(new LanguageModelTextPart(fallback.message.thinking));
+          if (!hideThinkingContent) {
+            progress.report(new LanguageModelTextPart(fallback.message.thinking));
+          }
           emittedOutput = true;
         }
 
@@ -1005,7 +1015,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
               if (rescued.message?.thinking) {
                 progress.report(new LanguageModelTextPart('\n\n\ud83d\udcad **Thinking**\n\n'));
-                progress.report(new LanguageModelTextPart(rescued.message.thinking));
+                if (!hideThinkingContent) {
+                  progress.report(new LanguageModelTextPart(rescued.message.thinking));
+                }
                 progress.report(new LanguageModelTextPart('\n\n---\n\n'));
               }
 

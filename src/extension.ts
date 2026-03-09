@@ -809,6 +809,9 @@ export async function handleChatRequest(
 
       const shouldThinkInitial = isThinkingModelId(modelId);
 
+      // Check if user wants to hide thinking content (only show header)
+      const hideThinkingContent = vscode.workspace.getConfiguration('ollama').get<boolean>('hideThinkingContent', true);
+
       let shouldThink = shouldThinkInitial;
       let response: AsyncIterable<ChatResponse>;
 
@@ -868,7 +871,9 @@ export async function handleChatRequest(
             stream.markdown('\n\n*Thinking*\n\n');
             thinkingStarted = true;
           }
-          stream.markdown(chunk.message.thinking);
+          if (!hideThinkingContent) {
+            stream.markdown(chunk.message.thinking);
+          }
         }
 
         if (chunk.message?.content) {
@@ -884,7 +889,9 @@ export async function handleChatRequest(
               stream.markdown('\n\n*Thinking*\n\n');
               thinkingStarted = true;
             }
-            stream.markdown(thinkingChunk);
+            if (!hideThinkingContent) {
+              stream.markdown(thinkingChunk);
+            }
           }
 
           if (contentChunk) {
