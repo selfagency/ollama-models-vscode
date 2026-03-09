@@ -1808,6 +1808,212 @@ describe('handleChatRequest model selection', () => {
     expect(mockSendRequest).toHaveBeenCalledTimes(2);
     expect(mockMarkdown).toHaveBeenCalledWith('recovered');
   });
+
+  it('invokes task_complete and exits without extra rounds (VS Code LM API path)', async () => {
+    vi.resetModules();
+
+    vi.doMock('./client.js', () => ({ getOllamaClient: vi.fn(), testConnection: vi.fn() }));
+    vi.doMock('./diagnostics.js', () => ({
+      createDiagnosticsLogger: () => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        exception: vi.fn(),
+      }),
+      getConfiguredLogLevel: vi.fn(() => 'info'),
+    }));
+    vi.doMock('./provider.js', () => ({
+      OllamaChatModelProvider: class {
+        setAuthToken = vi.fn();
+        prefetchModels = vi.fn();
+      },
+      isThinkingModelId: () => false,
+    }));
+    vi.doMock('./sidebar.js', () => ({ registerSidebar: vi.fn() }));
+    vi.doMock('./modelfiles.js', () => ({ registerModelfileManager: vi.fn() }));
+
+    const LMTextPart = class {
+      constructor(public value: string) {}
+    };
+    const LMToolCallPart = class {
+      constructor(
+        public callId: string,
+        public name: string,
+        public input: Record<string, unknown>,
+      ) {}
+    };
+    const LMToolResultPart = class {
+      constructor(
+        public callId: string,
+        public content: unknown,
+      ) {}
+    };
+
+    // Single round: stream yields buffered text + task_complete; no second round should occur.
+    const mockSendRequest = vi.fn().mockResolvedValueOnce({
+      stream: (async function* () {
+        yield new LMTextPart('all done');
+        yield new LMToolCallPart('tc-1', 'task_complete', {});
+      })(),
+    });
+
+    const mockInvokeTool = vi.fn().mockResolvedValue({ content: [] });
+    const mockSelectChatModels = vi
+      .fn()
+      .mockResolvedValue([{ vendor: 'selfagency-opilot', sendRequest: mockSendRequest }]);
+
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: LMTextPart,
+      LanguageModelToolCallPart: LMToolCallPart,
+      LanguageModelToolResultPart: LMToolResultPart,
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: unknown) => ({ role: 'user', content }),
+        Assistant: (content: unknown) => ({ role: 'assistant', content }),
+      },
+      lm: {
+        selectChatModels: mockSelectChatModels,
+        tools: [{ name: 'task_complete', description: 'signal done', inputSchema: {} }],
+        invokeTool: mockInvokeTool,
+      },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+      Uri: {
+        file: vi.fn((path: string) => ({ fsPath: path })),
+        joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })),
+      },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+    }));
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const mockRequest = {
+      prompt: 'finish',
+      model: { vendor: 'copilot' },
+      toolInvocationToken: 'tok-tc',
+    };
+
+    await ext.handleChatRequest(
+      mockRequest as any,
+      { history: [] } as any,
+      { markdown: mockMarkdown } as any,
+      { isCancellationRequested: false } as any,
+    );
+
+    // Only one round — task_complete terminates the loop immediately.
+    expect(mockSendRequest).toHaveBeenCalledTimes(1);
+    // Buffered text flushed before exiting.
+    expect(mockMarkdown).toHaveBeenCalledWith('all done');
+    // task_complete was invoked for VS Code bookkeeping.
+    expect(mockInvokeTool).toHaveBeenCalledWith(
+      'task_complete',
+      expect.objectContaining({ toolInvocationToken: 'tok-tc' }),
+      expect.anything(),
+    );
+  });
+});
+
+describe('handleChatRequest native Ollama task_complete', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('invokes task_complete, renders final content, and exits without an extra tool round', async () => {
+    vi.doMock('./client.js', () => ({ getOllamaClient: vi.fn(), testConnection: vi.fn() }));
+    vi.doMock('./diagnostics.js', () => ({
+      createDiagnosticsLogger: () => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        exception: vi.fn(),
+      }),
+      getConfiguredLogLevel: vi.fn(() => 'info'),
+    }));
+    vi.doMock('./provider.js', () => ({
+      OllamaChatModelProvider: class {
+        setAuthToken = vi.fn();
+        prefetchModels = vi.fn();
+      },
+      isThinkingModelId: () => false,
+    }));
+    vi.doMock('./sidebar.js', () => ({ registerSidebar: vi.fn() }));
+    vi.doMock('./modelfiles.js', () => ({ registerModelfileManager: vi.fn() }));
+
+    const mockInvokeTool = vi.fn().mockResolvedValue({ content: [] });
+
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      LanguageModelChatMessageRole: { User: 1, Assistant: 2 },
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: string) => ({ role: 1, content }),
+        Assistant: (content: string) => ({ role: 2, content }),
+      },
+      lm: {
+        selectChatModels: vi.fn().mockResolvedValue([]),
+        tools: [{ name: 'task_complete', description: 'signal done', inputSchema: {} }],
+        invokeTool: mockInvokeTool,
+      },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+      Uri: {
+        file: vi.fn((path: string) => ({ fsPath: path })),
+        joinPath: vi.fn((_base: any, p: string) => ({ fsPath: p })),
+      },
+      chat: { createChatParticipant: vi.fn(() => ({ iconPath: undefined, dispose: vi.fn() })) },
+      commands: { registerCommand: vi.fn(() => ({ dispose: vi.fn() })), executeCommand: vi.fn() },
+    }));
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const stream = { markdown: mockMarkdown };
+    const token = { isCancellationRequested: false };
+
+    // Round 1: model returns task_complete + final content (plain ChatResponse, stream: false).
+    // Round 2 should never be reached.
+    const mockChat = vi
+      .fn()
+      .mockResolvedValueOnce({
+        message: {
+          content: 'Task finished.',
+          tool_calls: [{ function: { name: 'task_complete', arguments: {} } }],
+        },
+      })
+      // If a second round were called this would make the test fail clearly.
+      .mockResolvedValueOnce({
+        message: { content: 'should not appear' },
+        done: true,
+      });
+
+    const mockClient = { chat: mockChat };
+    const request = {
+      prompt: 'finish',
+      model: { vendor: 'selfagency-opilot', id: 'llama3.2:latest' },
+      toolInvocationToken: 'tok-native',
+    };
+
+    await ext.handleChatRequest(request as any, { history: [] } as any, stream as any, token as any, mockClient as any);
+
+    // Only one round of chat — task_complete signals completion.
+    expect(mockChat).toHaveBeenCalledTimes(1);
+    // Final content from the model was rendered.
+    expect(mockMarkdown).toHaveBeenCalledWith(expect.stringContaining('Task finished.'));
+    // task_complete was invoked for VS Code bookkeeping.
+    expect(mockInvokeTool).toHaveBeenCalledWith(
+      'task_complete',
+      expect.objectContaining({ toolInvocationToken: 'tok-native' }),
+      expect.anything(),
+    );
+    // No empty tool-result message was pushed (no second chat call).
+    expect(mockMarkdown).not.toHaveBeenCalledWith(expect.stringContaining('should not appear'));
+  });
 });
 
 describe('handleBuiltInOllamaConflict', () => {

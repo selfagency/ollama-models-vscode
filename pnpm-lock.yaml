@@ -22,8 +22,8 @@ importers:
         version: 0.8.0
     devDependencies:
       '@go-task/cli':
-        specifier: ^3.49.0
-        version: 3.49.0
+        specifier: ^3.49.1
+        version: 3.49.1
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
@@ -501,8 +501,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@go-task/cli@3.49.0':
-    resolution: {integrity: sha512-2OA4uweJyMhf3sG8rFCs/Fsj4WsnkWVtj6Caxz0tgzt1v0a8hof3LfSGm4+Q219qhuhjhNschCstGRsobGEl6g==}
+  '@go-task/cli@3.49.1':
+    resolution: {integrity: sha512-kmFcIfiKfuEYeuj4Rslp+yGUSIq29CeuxZjnYUv6vsAHY1Kz6KTpUbl0Q0PPOG5vAME1iFrp+7rdrziQTkBmQw==}
     hasBin: true
 
   '@iconify-json/simple-icons@1.2.72':
@@ -3417,7 +3417,7 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@go-task/cli@3.49.0':
+  '@go-task/cli@3.49.1':
     dependencies:
       axios: 1.13.6
       jszip: 3.10.1
