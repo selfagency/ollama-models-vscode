@@ -476,12 +476,13 @@ export async function handleBuiltInOllamaConflict(
 
     if (!isSelectedAction(selection, 'Disable Built-in Ollama Provider')) return;
 
-    // Use empty string to disable the built-in provider explicitly.
-    // Using undefined can fall back to a non-empty default and keep it enabled.
+    // Override github.copilot.chat.byok.ollamaEndpoint with an empty string so the
+    // Copilot Chat BYOK OllamaLMProvider can no longer reach localhost:11434.
+    // With no reachable endpoint, provideLanguageModelChatInformation returns [].
     let disabled = false;
     try {
       await (ws.getConfiguration('github.copilot.chat') as vscode.WorkspaceConfiguration).update(
-        'ollama.url',
+        'byok.ollamaEndpoint',
         '',
         vscode.ConfigurationTarget.Global,
       );
@@ -489,7 +490,7 @@ export async function handleBuiltInOllamaConflict(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
-      // Some debug hosts don't register github.copilot.chat.ollama.url as a writable setting.
+      // Some debug hosts don't register github.copilot.chat.byok.ollamaEndpoint as a writable setting.
       // Fall back to profile-scoped chatLanguageModels.json when available.
       if (message.includes('not a registered configuration') && context) {
         try {
