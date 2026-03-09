@@ -17,6 +17,7 @@ export interface OpenAICompatChatCompletionChunk {
     delta?: {
       role?: 'system' | 'user' | 'assistant' | 'tool';
       content?: string;
+      reasoning?: string;
       tool_calls?: OpenAICompatToolCall[];
     };
     finish_reason?: string | null;
@@ -31,6 +32,7 @@ export interface OpenAICompatChatCompletionResponse {
     message?: {
       role?: 'system' | 'user' | 'assistant' | 'tool';
       content?: string | null;
+      reasoning?: string;
       tool_calls?: OpenAICompatToolCall[];
     };
     finish_reason?: string | null;
