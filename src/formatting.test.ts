@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createXmlStreamFilter, formatXmlLikeResponseForDisplay, stripXmlContextTags } from './formatting.js';
+import {
+  createXmlStreamFilter,
+  dedupeXmlContextBlocksByTag,
+  formatXmlLikeResponseForDisplay,
+  sanitizeNonStreamingModelOutput,
+  splitLeadingXmlContextBlocks,
+  stripXmlContextTags,
+} from './formatting.js';
 
 describe('createXmlStreamFilter', () => {
   it('write() returns only new content per call with XML tags', () => {
@@ -36,6 +43,14 @@ describe('createXmlStreamFilter', () => {
     expect(a + b + c).toBe('<code>actual content</code>');
   });
 
+  it('strips user_info tags across chunk boundaries', () => {
+    const filter = createXmlStreamFilter();
+    const a = filter.write('<user_info>private context');
+    const b = filter.write('</user_info>');
+    const c = filter.write(' visible answer');
+    expect(a + b + c + filter.end()).toBe(' visible answer');
+  });
+
   it('passes through non-context tags', () => {
     const filter = createXmlStreamFilter();
     const out = filter.write('<code>print("hi")</code>');
@@ -58,6 +73,13 @@ describe('createXmlStreamFilter', () => {
 describe('stripXmlContextTags', () => {
   it('removes context tags from complete text', () => {
     const result = stripXmlContextTags('<environment_info>private</environment_info>public');
+    expect(result).toBe('public');
+  });
+
+  it('removes user_info and workspace_info tags from complete text', () => {
+    const result = stripXmlContextTags(
+      '<user_info>private user</user_info><workspace_info>private workspace</workspace_info>public',
+    );
     expect(result).toBe('public');
   });
 });
@@ -85,6 +107,19 @@ describe('formatXmlLikeResponseForDisplay', () => {
     const malformed = '<note>unfinished';
     const result = formatXmlLikeResponseForDisplay(malformed);
     expect(result).toBe(malformed);
+  });
+});
+
+describe('sanitizeNonStreamingModelOutput', () => {
+  it('removes context tags and formats non-context tags', () => {
+    const input =
+      '<user_info>private context</user_info><workspace_info>workspace details</workspace_info><note>visible note</note>';
+    const result = sanitizeNonStreamingModelOutput(input);
+
+    expect(result).not.toContain('private context');
+    expect(result).not.toContain('workspace details');
+    expect(result).toContain('**Note**');
+    expect(result).toContain('visible note');
   });
 });
 
@@ -134,5 +169,53 @@ describe('createXmlStreamFilter — performance regression', () => {
     expect(result2).not.toContain('first');
     expect(result2).toContain('second');
     expect(result3).toBe('');
+  });
+});
+
+describe('splitLeadingXmlContextBlocks', () => {
+  it('extracts only leading XML context blocks', () => {
+    const input = '<user_info>u1</user_info><workspace_info>w1</workspace_info>hello';
+    const result = splitLeadingXmlContextBlocks(input);
+    expect(result.contextBlocks).toEqual(['<user_info>u1</user_info>', '<workspace_info>w1</workspace_info>']);
+    expect(result.content).toBe('hello');
+  });
+
+  it('does not elevate mid-message XML into context blocks', () => {
+    const input = 'hello <user_info>not-context</user_info>';
+    const result = splitLeadingXmlContextBlocks(input);
+    expect(result.contextBlocks).toEqual([]);
+    expect(result.content).toBe('hello <user_info>not-context</user_info>');
+  });
+
+  it('does not elevate unknown leading tags into context blocks', () => {
+    const input = '<note>user content</note>hello';
+    const result = splitLeadingXmlContextBlocks(input);
+    expect(result.contextBlocks).toEqual([]);
+    expect(result.content).toBe('<note>user content</note>hello');
+  });
+});
+
+describe('dedupeXmlContextBlocksByTag', () => {
+  it('keeps latest occurrence per tag and preserves output order', () => {
+    const blocks = [
+      '<environment_info>old-env</environment_info>',
+      '<workspace_info>w1</workspace_info>',
+      '<environment_info>new-env</environment_info>',
+      '<user_info>u1</user_info>',
+    ];
+
+    const deduped = dedupeXmlContextBlocksByTag(blocks);
+    expect(deduped).toEqual([
+      '<workspace_info>w1</workspace_info>',
+      '<environment_info>new-env</environment_info>',
+      '<user_info>u1</user_info>',
+    ]);
+  });
+
+  it('preserves relative order when a single entry contains multiple tags', () => {
+    const blocks = ['<selection>s1</selection><workspace_info>w1</workspace_info>', '<selection>s2</selection>'];
+
+    const deduped = dedupeXmlContextBlocksByTag(blocks);
+    expect(deduped).toEqual(['<workspace_info>w1</workspace_info>', '<selection>s2</selection>']);
   });
 });

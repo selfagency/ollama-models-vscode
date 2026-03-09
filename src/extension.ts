@@ -4,12 +4,19 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ChatResponse, Message, Ollama, Tool } from 'ollama';
 import * as vscode from 'vscode';
-import { getCloudOllamaClient, getOllamaClient, testConnection } from './client.js';
+import { getCloudOllamaClient, getOllamaAuthToken, getOllamaClient, getOllamaHost, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
-import { createXmlStreamFilter, formatXmlLikeResponseForDisplay, stripXmlContextTags } from './formatting';
+import {
+  createXmlStreamFilter,
+  dedupeXmlContextBlocksByTag,
+  sanitizeNonStreamingModelOutput,
+  splitLeadingXmlContextBlocks,
+} from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
+import { chatCompletionsOnce, chatCompletionsStream } from './openaiCompat.js';
+import { ollamaMessagesToOpenAICompat, ollamaToolsToOpenAICompat } from './openaiCompatMapping.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
 import {
@@ -23,13 +30,172 @@ const LANGUAGE_MODEL_VENDOR = 'selfagency-opilot';
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:';
 let builtInOllamaConflictPromptInProgress = false;
 
-function toRuntimeModelId(modelId: string): string {
+export function toRuntimeModelId(modelId: string): string {
   return modelId.startsWith(PROVIDER_MODEL_ID_PREFIX) ? modelId.slice(PROVIDER_MODEL_ID_PREFIX.length) : modelId;
+}
+
+export function mapOpenAiToolCallsToOllamaLike(toolCalls: unknown):
+  | Array<{
+      id?: string;
+      function?: {
+        name?: string;
+        arguments?: Record<string, unknown>;
+      };
+    }>
+  | undefined {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+    return undefined;
+  }
+
+  const mapped: Array<{
+    id?: string;
+    function?: {
+      name?: string;
+      arguments?: Record<string, unknown>;
+    };
+  }> = [];
+
+  for (const call of toolCalls) {
+    if (!call || typeof call !== 'object') {
+      continue;
+    }
+
+    const typed = call as {
+      id?: unknown;
+      function?: {
+        name?: unknown;
+        arguments?: unknown;
+      };
+    };
+
+    let parsedArgs: Record<string, unknown> = {};
+    if (typeof typed.function?.arguments === 'string' && typed.function.arguments.trim()) {
+      try {
+        const parsed = JSON.parse(typed.function.arguments);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsedArgs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        parsedArgs = {};
+      }
+    }
+
+    mapped.push({
+      id: typeof typed.id === 'string' ? typed.id : undefined,
+      function: {
+        name: typeof typed.function?.name === 'string' ? typed.function.name : undefined,
+        arguments: parsedArgs,
+      },
+    });
+  }
+
+  return mapped;
+}
+
+async function openAiCompatStreamChat(params: {
+  modelId: string;
+  messages: Message[];
+  tools?: Tool[];
+  shouldThink: boolean;
+  effectiveClient: Ollama;
+  extensionContext?: vscode.ExtensionContext;
+  signal?: AbortSignal;
+}): Promise<AsyncIterable<ChatResponse>> {
+  try {
+    const baseUrl = getOllamaHost();
+    const authToken = params.extensionContext ? await getOllamaAuthToken(params.extensionContext) : undefined;
+
+    const stream = chatCompletionsStream({
+      baseUrl,
+      authToken,
+      signal: params.signal,
+      request: {
+        model: params.modelId,
+        messages: ollamaMessagesToOpenAICompat(params.messages),
+        tools: ollamaToolsToOpenAICompat(params.tools),
+        ...(params.shouldThink ? { think: true } : {}),
+      },
+    });
+
+    return (async function* (): AsyncGenerator<ChatResponse> {
+      for await (const chunk of stream) {
+        const choice = chunk.choices?.[0];
+        const delta = choice?.delta;
+        const content = typeof delta?.content === 'string' ? delta.content : '';
+        const mappedToolCalls = mapOpenAiToolCallsToOllamaLike(delta?.tool_calls);
+
+        yield {
+          message: {
+            role: 'assistant',
+            content,
+            ...(mappedToolCalls ? { tool_calls: mappedToolCalls } : {}),
+          },
+          done: choice?.finish_reason != null,
+        } as ChatResponse;
+      }
+    })();
+  } catch {
+    return params.effectiveClient.chat({
+      model: params.modelId,
+      messages: params.messages,
+      stream: true,
+      ...(params.tools ? { tools: params.tools } : {}),
+      ...(params.shouldThink ? { think: true } : {}),
+    });
+  }
+}
+
+async function openAiCompatChatOnce(params: {
+  modelId: string;
+  messages: Message[];
+  tools?: Tool[];
+  shouldThink: boolean;
+  effectiveClient: Ollama;
+  extensionContext?: vscode.ExtensionContext;
+  signal?: AbortSignal;
+}): Promise<ChatResponse> {
+  try {
+    const baseUrl = getOllamaHost();
+    const authToken = params.extensionContext ? await getOllamaAuthToken(params.extensionContext) : undefined;
+
+    const response = await chatCompletionsOnce({
+      baseUrl,
+      authToken,
+      signal: params.signal,
+      request: {
+        model: params.modelId,
+        messages: ollamaMessagesToOpenAICompat(params.messages),
+        tools: ollamaToolsToOpenAICompat(params.tools),
+        ...(params.shouldThink ? { think: true } : {}),
+      },
+    });
+
+    const choice = response.choices?.[0];
+    const content = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    const mappedToolCalls = mapOpenAiToolCallsToOllamaLike(choice?.message?.tool_calls);
+
+    return {
+      message: {
+        role: 'assistant',
+        content,
+        ...(mappedToolCalls ? { tool_calls: mappedToolCalls } : {}),
+      },
+      done: true,
+    } as ChatResponse;
+  } catch {
+    return (await params.effectiveClient.chat({
+      model: params.modelId,
+      messages: params.messages,
+      stream: false,
+      ...(params.tools ? { tools: params.tools } : {}),
+      ...(params.shouldThink ? { think: true } : {}),
+    })) as ChatResponse;
+  }
 }
 
 // normalizeToolParameters/isToolsNotSupportedError moved to src/toolUtils.ts
 
-function isSelectedAction(selection: unknown, actionLabel: string): boolean {
+export function isSelectedAction(selection: unknown, actionLabel: string): boolean {
   if (typeof selection === 'string') {
     return selection === actionLabel;
   }
@@ -134,7 +300,7 @@ export function handleConfigurationChange(
   onAutoStartChange?.(enabled);
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
@@ -206,7 +372,7 @@ export async function handleConnectionTestFailure(
   }
 }
 
-function getOllamaServerLogPath(): string | null {
+export function getOllamaServerLogPath(): string | null {
   const platform = process.platform;
   if (platform === 'darwin') {
     return join(homedir(), '.ollama', 'logs', 'server.log');
@@ -385,7 +551,6 @@ export async function handleChatRequest(
       // only (stopping as soon as a tag does not begin at index 0), collected into systemContextParts,
       // deduplicated by tag name (most-recent wins), then prepended as a single Ollama `system` message.
       // This keeps IDE-injected context separate from the conversational user turn.
-      const XML_CONTEXT_TAG_RE = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>[\s\S]*?<\/\1>/gi;
       const systemContextParts: string[] = [];
 
       const ollamaMessages: (Message & { tool_call_id?: string })[] = messages.map(msg => {
@@ -395,30 +560,11 @@ export async function handleChatRequest(
           .map(p => p.value)
           .join('');
         if (isUser) {
-          let remainingText = content;
-          let hadLeadingContext = false;
-
-          if (remainingText.trimStart().startsWith('<')) {
-            remainingText = remainingText.trimStart();
-            // Iteratively consume XML_CONTEXT_TAG_RE matches only when they appear at the very start
-            // of the remaining text. As soon as a match is not at index 0, we stop extracting.
-            XML_CONTEXT_TAG_RE.lastIndex = 0;
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-              const match = XML_CONTEXT_TAG_RE.exec(remainingText);
-              if (!match || match.index !== 0) {
-                break;
-              }
-              const matchedText = match[0];
-              systemContextParts.push(matchedText.trim());
-              remainingText = remainingText.slice(matchedText.length).trimStart();
-              hadLeadingContext = true;
-              // Reset lastIndex because we've sliced the string.
-              XML_CONTEXT_TAG_RE.lastIndex = 0;
-            }
+          const split = splitLeadingXmlContextBlocks(content);
+          if (split.contextBlocks.length > 0) {
+            systemContextParts.push(...split.contextBlocks);
           }
-
-          content = hadLeadingContext ? remainingText : content.trim();
+          content = split.content;
         }
         return {
           role: (isUser ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -426,24 +572,7 @@ export async function handleChatRequest(
         };
       });
 
-      // Deduplicate context blocks by tag type, keeping only the most recent occurrence
-      const latestByTag = new Map<string, string>();
-      for (let i = systemContextParts.length - 1; i >= 0; i--) {
-        const part = systemContextParts[i];
-        XML_CONTEXT_TAG_RE.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        // Use a loop in case a single part contains multiple context blocks
-        // (we still only keep the latest block per tag type).
-        while ((match = XML_CONTEXT_TAG_RE.exec(part)) !== null) {
-          const tagName = match[1];
-          if (!latestByTag.has(tagName)) {
-            latestByTag.set(tagName, match[0]);
-          }
-        }
-      }
-
-      // Preserve insertion order (latest occurrence of each tag wins, collected in reverse above)
-      const dedupedContextParts = [...latestByTag.values()].reverse();
+      const dedupedContextParts = dedupeXmlContextBlocksByTag(systemContextParts);
 
       if (dedupedContextParts.length > 0) {
         ollamaMessages.unshift({ role: 'system', content: dedupedContextParts.join('\n\n') });
@@ -471,13 +600,14 @@ export async function handleChatRequest(
 
           let roundResponse: ChatResponse;
           try {
-            roundResponse = (await effectiveClient.chat({
-              model: modelId,
+            roundResponse = await openAiCompatChatOnce({
+              modelId,
               messages: ollamaMessages as Message[],
-              stream: false,
               tools: ollamaTools,
-              ...(shouldThinkInToolLoop ? { think: true } : {}),
-            })) as ChatResponse;
+              shouldThink: shouldThinkInToolLoop,
+              effectiveClient,
+              extensionContext,
+            });
           } catch (toolError) {
             if (isToolsNotSupportedError(toolError)) {
               outputChannel?.warn(
@@ -493,7 +623,7 @@ export async function handleChatRequest(
           if (!toolCalls?.length) {
             // No tool invocations needed — render the response text and exit.
             if (roundResponse.message.content) {
-              stream.markdown(formatXmlLikeResponseForDisplay(stripXmlContextTags(roundResponse.message.content)));
+              stream.markdown(sanitizeNonStreamingModelOutput(roundResponse.message.content));
             }
             return;
           }
@@ -551,11 +681,13 @@ export async function handleChatRequest(
         for (let xmlRound = 0; xmlRound < MAX_XML_ROUNDS; xmlRound++) {
           if (token.isCancellationRequested) return;
 
-          const xmlResponse = (await effectiveClient.chat({
-            model: modelId,
+          const xmlResponse = await openAiCompatChatOnce({
+            modelId,
             messages: xmlConversation,
-            stream: false,
-          })) as ChatResponse;
+            shouldThink: false,
+            effectiveClient,
+            extensionContext,
+          });
 
           const responseText = xmlResponse.message.content ?? '';
           const xmlToolCalls = extractXmlToolCalls(responseText, toolNames);
@@ -573,7 +705,7 @@ export async function handleChatRequest(
               continue;
             }
             if (responseText.trim()) {
-              stream.markdown(formatXmlLikeResponseForDisplay(stripXmlContextTags(responseText)));
+              stream.markdown(sanitizeNonStreamingModelOutput(responseText));
             }
             return;
           }
@@ -617,11 +749,12 @@ export async function handleChatRequest(
       let response: AsyncIterable<ChatResponse>;
 
       try {
-        response = await effectiveClient.chat({
-          model: modelId,
+        response = await openAiCompatStreamChat({
+          modelId,
           messages: ollamaMessages as Message[],
-          stream: true,
-          ...(shouldThink ? { think: true } : {}),
+          shouldThink,
+          effectiveClient,
+          extensionContext,
         });
       } catch (chatError) {
         const supportsThinkingError =
@@ -631,18 +764,22 @@ export async function handleChatRequest(
           chatError.message.toLowerCase().includes('does not support thinking');
 
         if (supportsThinkingError) {
-          response = await effectiveClient.chat({
-            model: modelId,
+          response = await openAiCompatStreamChat({
+            modelId,
             messages: ollamaMessages as Message[],
-            stream: true,
+            shouldThink: false,
+            effectiveClient,
+            extensionContext,
           });
         } else if (isToolsNotSupportedError(chatError)) {
           outputChannel?.warn(`[client] model ${modelId} rejected tools; retrying stream without tools/thinking`);
           shouldThink = false;
-          response = await effectiveClient.chat({
-            model: modelId,
+          response = await openAiCompatStreamChat({
+            modelId,
             messages: ollamaMessages as Message[],
-            stream: true,
+            shouldThink: false,
+            effectiveClient,
+            extensionContext,
           });
         } else {
           throw chatError;

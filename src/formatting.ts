@@ -14,6 +14,101 @@ export interface XmlStreamFilter {
   end(): string;
 }
 
+const XML_CONTEXT_TAG_RE = /<([a-zA-Z_][a-zA-Z0-9_.-]*)[^>]*>[\s\S]*?<\/\1>/gi;
+const ELEVATED_CONTEXT_TAG_NAMES = new Set([
+  'environment_info',
+  'user_info',
+  'workspace_info',
+  'selection',
+  'file_context',
+  'user',
+  'userRequest',
+  'workspaces',
+  'workspace',
+  'session',
+  'instructions',
+  'context',
+  'userPreferences',
+  'userData',
+  'profile',
+  'history',
+  'system',
+  'systemPrompt',
+  'chatHistory',
+  'contextWindow',
+  'injectedContext',
+]);
+
+export interface SplitLeadingXmlContextResult {
+  content: string;
+  contextBlocks: string[];
+}
+
+/**
+ * Split leading XML context blocks from a user message.
+ * Only extracts XML blocks that start at index 0 (after trimStart), so
+ * mid-message XML remains regular user text.
+ */
+export function splitLeadingXmlContextBlocks(text: string): SplitLeadingXmlContextResult {
+  let remainingText = text;
+  let hadLeadingContext = false;
+  const contextBlocks: string[] = [];
+
+  if (remainingText.trimStart().startsWith('<')) {
+    remainingText = remainingText.trimStart();
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      XML_CONTEXT_TAG_RE.lastIndex = 0;
+      const match = XML_CONTEXT_TAG_RE.exec(remainingText);
+      if (!match || match.index !== 0) {
+        break;
+      }
+      const tagName = match[1];
+      if (!ELEVATED_CONTEXT_TAG_NAMES.has(tagName)) {
+        break;
+      }
+      const matchedText = match[0];
+      contextBlocks.push(matchedText.trim());
+      remainingText = remainingText.slice(matchedText.length).trimStart();
+      hadLeadingContext = true;
+    }
+  }
+
+  return {
+    content: hadLeadingContext ? remainingText : text.trim(),
+    contextBlocks,
+  };
+}
+
+/**
+ * Deduplicate XML context blocks by tag name, keeping the most recent
+ * occurrence per tag type while preserving overall order.
+ */
+export function dedupeXmlContextBlocksByTag(contextBlocks: readonly string[]): string[] {
+  const latestByTag = new Map<string, string>();
+  for (let i = contextBlocks.length - 1; i >= 0; i--) {
+    const part = contextBlocks[i];
+    XML_CONTEXT_TAG_RE.lastIndex = 0;
+    const matches: RegExpExecArray[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = XML_CONTEXT_TAG_RE.exec(part)) !== null) {
+      matches.push(match);
+    }
+
+    // Iterate per-string matches from right to left so final output reversal
+    // preserves left-to-right order of latest tag occurrences.
+    for (let j = matches.length - 1; j >= 0; j--) {
+      const currentMatch = matches[j];
+      const tagName = currentMatch[1];
+      if (!latestByTag.has(tagName)) {
+        latestByTag.set(tagName, currentMatch[0].trim());
+      }
+    }
+  }
+
+  return [...latestByTag.values()].reverse();
+}
+
 /**
  * Create a streaming XML filter that removes context tags as they are parsed.
  * Uses SAX parsing to handle incomplete tags across chunk boundaries.
@@ -27,6 +122,7 @@ export interface XmlStreamFilter {
 export function createXmlStreamFilter(): XmlStreamFilter {
   const contextTagNames = new Set([
     'environment_info',
+    'user_info',
     'workspace_info',
     'selection',
     'file_context',
@@ -118,8 +214,8 @@ export function stripXmlContextTags(text: string): string {
   }
 
   const filter = createXmlStreamFilter();
-  filter.write(text);
-  return filter.end().trim();
+  const cleaned = `${filter.write(text)}${filter.end()}`;
+  return cleaned.trim();
 }
 
 /**
@@ -143,4 +239,13 @@ export function formatXmlLikeResponseForDisplay(text: string): string {
   });
 
   return replaced ? transformed.trim() : text;
+}
+
+/**
+ * Sanitize complete (non-streaming) model output for display.
+ * - Removes IDE-injected XML context tags (e.g. user/workspace metadata)
+ * - Formats remaining XML-like content into markdown sections for readability
+ */
+export function sanitizeNonStreamingModelOutput(text: string): string {
+  return formatXmlLikeResponseForDisplay(stripXmlContextTags(text));
 }
