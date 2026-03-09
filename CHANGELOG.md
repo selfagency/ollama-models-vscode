@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-03-09
+
+## What's Changed
+
+- feat: handle VS Code 1.111 Autopilot task_complete tool and bump engine to 1.111 by @selfagency in https://github.com/selfagency/opilot/pull/50
+
+**Full Changelog**: https://github.com/selfagency/opilot/compare/v0.1.4-pre...v0.1.5-pre
+
+_Source: changes from v0.1.4-pre to v0.1.5-pre._
+
 ## [0.1.4] - 2026-03-09
 
 ## What's Changed
