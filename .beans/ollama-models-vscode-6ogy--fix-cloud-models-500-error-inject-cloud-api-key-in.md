@@ -6,6 +6,7 @@ type: bug
 priority: high
 created_at: 2026-03-07T17:17:38Z
 updated_at: 2026-03-07T17:35:19Z
+id: ollama-models-vscode-6ogy
 ---
 
 Cloud model chat requests return a 500 error because the Ollama local server requires `Authorization: Bearer <cloudApiKey>` to proxy requests to Ollama's cloud backend. The extension never includes the cloud API key in chat/generate/pull client requests.

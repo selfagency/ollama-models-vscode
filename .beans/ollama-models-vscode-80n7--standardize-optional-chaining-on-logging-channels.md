@@ -6,6 +6,7 @@ type: task
 priority: low
 created_at: 2026-03-08T16:40:28Z
 updated_at: 2026-03-08T16:56:52Z
+id: ollama-models-vscode-80n7
 ---
 
 Remove superfluous optional chaining on the VS Code output channel and standardize logging call sites across `src/provider.ts` and `src/extension.ts`.

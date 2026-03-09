@@ -7,6 +7,7 @@ priority: medium
 created_at: 2026-03-07T17:17:53Z
 updated_at: 2026-03-07T17:19:57Z
 branch: fix/cfab-surface-crash-alert
+id: ollama-models-vscode-cfab
 ---
 
 When the Ollama model runner crashes (SIGSEGV), the chat API throws an error with message "model runner has unexpectedly stopped...". Currently this is caught silently — no UI alert is shown and the model is not unloaded.

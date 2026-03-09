@@ -6,6 +6,7 @@ type: feature
 priority: low
 created_at: 2026-03-07T17:18:22Z
 updated_at: 2026-03-07T18:30:46Z
+id: ollama-models-vscode-r0ji
 ---
 
 Add a filter toolbar button to each sidebar pane (Local Models, Cloud Models, Library) that opens a search input. While a filter is active, the button changes to a clear-all icon. Filtering matches against item labels including children.

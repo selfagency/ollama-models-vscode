@@ -8,6 +8,7 @@ created_at: 2026-03-09T00:19:52Z
 updated_at: 2026-03-09T00:19:52Z
 branch: fix/xu20-xml-context-leak
 pr: 45
+id: ollama-models-vscode-7d9m
 ---
 
 ## Goal

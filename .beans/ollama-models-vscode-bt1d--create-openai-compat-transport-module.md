@@ -9,6 +9,7 @@ updated_at: 2026-03-09T00:20:07Z
 parent: ollama-models-vscode-7d9m
 branch: fix/xu20-xml-context-leak
 pr: 45
+id: ollama-models-vscode-bt1d
 ---
 
 Implement `src/openaiCompat.ts` with:

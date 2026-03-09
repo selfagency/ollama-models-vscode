@@ -9,6 +9,7 @@ updated_at: 2026-03-09T00:20:07Z
 parent: ollama-models-vscode-7d9m
 branch: fix/xu20-xml-context-leak
 pr: 45
+id: ollama-models-vscode-5loh
 ---
 
 Replace provider SDK chat calls with OpenAI transport while preserving:

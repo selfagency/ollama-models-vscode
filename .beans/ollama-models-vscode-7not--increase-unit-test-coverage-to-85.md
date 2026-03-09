@@ -6,6 +6,7 @@ type: feature
 priority: medium
 created_at: 2026-03-07T16:08:40Z
 updated_at: 2026-03-08T18:04:31Z
+id: ollama-models-vscode-7not
 ---
 
 ## Todo

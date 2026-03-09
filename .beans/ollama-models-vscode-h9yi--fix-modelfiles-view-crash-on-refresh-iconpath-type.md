@@ -6,6 +6,7 @@ type: bug
 priority: high
 created_at: 2026-03-07T17:17:20Z
 updated_at: 2026-03-07T17:33:36Z
+id: ollama-models-vscode-h9yi
 ---
 
 After creating a modelfile, the modelfiles view crashes on refresh with `TypeError: Cannot read properties of undefined reading '0'`.

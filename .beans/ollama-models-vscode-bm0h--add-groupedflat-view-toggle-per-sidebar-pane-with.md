@@ -6,6 +6,7 @@ type: feature
 priority: low
 created_at: 2026-03-07T17:30:43Z
 updated_at: 2026-03-07T18:36:46Z
+id: ollama-models-vscode-bm0h
 ---
 
 Add a toggle button per sidebar pane (Local Models, Cloud Models, Library) that switches between grouped/parented view and a flat alphabetically-sorted list. When parenting is off, all models are shown as a flat list sorted A–Z with no group headers.

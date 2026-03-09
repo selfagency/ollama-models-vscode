@@ -6,6 +6,7 @@ type: feature
 priority: low
 created_at: 2026-03-07T17:18:13Z
 updated_at: 2026-03-07T18:25:38Z
+id: ollama-models-vscode-wp85
 ---
 
 Add a collapse-all toolbar button to the Local Models, Cloud Models, and Library sidebar views. No expand-all button — VS Code's native tree expand-all is sufficient, and triggering it programmatically is not reliably supported.

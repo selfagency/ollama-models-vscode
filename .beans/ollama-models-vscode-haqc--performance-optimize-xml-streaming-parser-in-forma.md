@@ -6,6 +6,7 @@ type: task
 priority: low
 created_at: 2026-03-08T16:41:32Z
 updated_at: 2026-03-08T17:45:44Z
+id: ollama-models-vscode-haqc
 ---
 
 Profile and improve the performance of the SAX-based XML response formatter in `src/formatting.ts` to reduce overhead for large streamed responses.

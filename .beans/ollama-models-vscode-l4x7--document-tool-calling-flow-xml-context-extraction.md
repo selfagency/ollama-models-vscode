@@ -6,6 +6,7 @@ type: task
 priority: low
 created_at: 2026-03-08T16:40:54Z
 updated_at: 2026-03-08T17:37:23Z
+id: ollama-models-vscode-l4x7
 ---
 
 Add inline code comments and/or JSDoc blocks covering the four under-documented subsystems: tool calling flow, XML context tag extraction, cloud model authentication, and Modelfile PARAMETER keywords.

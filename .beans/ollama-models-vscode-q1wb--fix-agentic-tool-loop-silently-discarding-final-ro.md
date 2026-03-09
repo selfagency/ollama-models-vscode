@@ -1,11 +1,15 @@
 ---
-# ollama-models-vscode-q1wb
+id: ollama-models-vscode-q1wb
 title: Fix agentic tool loop silently discarding final-round text when MAX_TOOL_ROUNDS exhausted
 status: completed
 type: fix
-priority: normal
+---
+
+ty: normal
 created_at: 2026-03-07T18:38:10Z
 updated_at: 2026-03-07T18:42:45Z
+id: ollama-models-vscode-q1wb
+
 ---
 
 When the VS Code LM tool loop exhausts all MAX_TOOL_ROUNDS iterations (11 rounds, 0–10), the loop exits naturally without hitting the `break` branch that flushes `assistantTextParts`. Any text the model produced in the final round is silently discarded and never rendered via `stream.markdown()`.
