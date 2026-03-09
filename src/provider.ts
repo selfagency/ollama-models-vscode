@@ -713,9 +713,13 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
 
     // Convert VS Code messages to Ollama format, stripping images for non-vision models
     const supportsVision = this.visionByModelId.get(model.id) ?? this.visionByModelId.get(runtimeModelId) ?? false;
-    const ollamaMessages = truncateMessages(
-      this.toOllamaMessages(messages, supportsVision) as Message[],
-      model.maxInputTokens,
+    const rawMessages = this.toOllamaMessages(messages, supportsVision) as Message[];
+    this.outputChannel.debug(
+      `[context] before truncation: ${rawMessages.length} messages, ${JSON.stringify(rawMessages, null, 2).length} chars, model.maxInputTokens=${model.maxInputTokens}`,
+    );
+    const ollamaMessages = truncateMessages(rawMessages, model.maxInputTokens);
+    this.outputChannel.debug(
+      `[context] after truncation: ${ollamaMessages.length} messages, ${JSON.stringify(ollamaMessages, null, 2).length} chars`,
     );
 
     // Build tools array if supported
@@ -767,6 +771,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       try {
         this.outputChannel.debug(
           `[client] chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}, native=${!isCloudModel}`,
+        );
+        this.outputChannel.debug(
+          `[client] full request payload:\n${JSON.stringify({ model: runtimeModelId, messages: ollamaMessages, tools, think: shouldThink }, null, 2)}`,
         );
         response = await streamFn(shouldThink, tools);
         this.outputChannel.debug(`[client] chat response stream started for ${runtimeModelId}`);
@@ -822,6 +829,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         if (token.isCancellationRequested) {
           break;
         }
+
+        this.outputChannel.debug(`[client] raw chunk: ${JSON.stringify(chunk)}`);
 
         // Handle thinking tokens (reasoning phase)
         if (chunk.message?.thinking) {
@@ -912,9 +921,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       // "Sorry, no response was returned." Recover by retrying once without
       // streaming and emit any returned content.
       if (!emittedOutput && !token.isCancellationRequested) {
-        this.outputChannel.debug(
-          `[client] stream returned no output for ${runtimeModelId}; retrying with stream=false`,
-        );
+        this.outputChannel.warn(`[client] stream returned no output for ${runtimeModelId}; retrying with stream=false`);
 
         const fallbackFn = isCloudModel
           ? (think: boolean) =>
@@ -935,6 +942,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
               );
 
         const fallback = await fallbackFn(shouldThink);
+        this.outputChannel.debug(`[client] non-stream fallback response: ${JSON.stringify(fallback, null, 2)}`);
 
         if (fallback.message?.thinking) {
           progress.report(new LanguageModelTextPart('\n\n💭 **Thinking**\n\n'));
