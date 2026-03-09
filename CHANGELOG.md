@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-09
+
+## What's Changed
+
+- fix: use API capabilities over regex for thinking model detection by @selfagency in https://github.com/selfagency/opilot/pull/48
+
+**Full Changelog**: https://github.com/selfagency/opilot/compare/v0.1.3-pre...v0.1.4-pre
+
+_Source: changes from v0.1.3-pre to v0.1.4-pre._
+
 ## [0.1.3] - 2026-03-09
 
 ## What's Changed
