@@ -144,6 +144,95 @@ describe('getOllamaClient', () => {
 });
 
 // ---------------------------------------------------------------------------
+// host/auth helper exports
+// ---------------------------------------------------------------------------
+
+describe('getOllamaHost / getOllamaAuthToken / getOllamaAuthHeaders / getCloudOllamaClient', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('getOllamaHost reads configured host and falls back to localhost', async () => {
+    vi.doMock('vscode', () => makeVscodeMock('http://configured-host:11434'));
+    vi.doMock('ollama', () => ({ Ollama: class {} }));
+
+    const { getOllamaHost } = await import('./client.js');
+    expect(getOllamaHost()).toBe('http://configured-host:11434');
+
+    vi.resetModules();
+    vi.doMock('vscode', () => makeVscodeMock(''));
+    vi.doMock('ollama', () => ({ Ollama: class {} }));
+    const { getOllamaHost: getHostWithDefault } = await import('./client.js');
+    expect(getHostWithDefault()).toBe('http://localhost:11434');
+  });
+
+  it('getOllamaAuthToken returns token from secret storage', async () => {
+    vi.doMock('vscode', () => makeVscodeMock());
+    vi.doMock('ollama', () => ({ Ollama: class {} }));
+
+    const context = {
+      secrets: { get: vi.fn().mockResolvedValue('secret-token') },
+    } as any;
+
+    const { getOllamaAuthToken } = await import('./client.js');
+    await expect(getOllamaAuthToken(context)).resolves.toBe('secret-token');
+  });
+
+  it('getOllamaAuthHeaders returns bearer header when token exists', async () => {
+    vi.doMock('vscode', () => makeVscodeMock());
+    vi.doMock('ollama', () => ({ Ollama: class {} }));
+
+    const context = {
+      secrets: { get: vi.fn().mockResolvedValue('secret-token') },
+    } as any;
+
+    const { getOllamaAuthHeaders } = await import('./client.js');
+    await expect(getOllamaAuthHeaders(context)).resolves.toEqual({
+      Authorization: 'Bearer secret-token',
+    });
+  });
+
+  it('getOllamaAuthHeaders returns undefined when token is missing', async () => {
+    vi.doMock('vscode', () => makeVscodeMock());
+    vi.doMock('ollama', () => ({ Ollama: class {} }));
+
+    const context = {
+      secrets: { get: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    const { getOllamaAuthHeaders } = await import('./client.js');
+    await expect(getOllamaAuthHeaders(context)).resolves.toBeUndefined();
+  });
+
+  it('getCloudOllamaClient reuses getOllamaClient behavior', async () => {
+    vi.doMock('vscode', () => makeVscodeMock('http://localhost:11434'));
+
+    const OllamaClass = vi.fn().mockImplementation(function (this: { config: unknown }, config: unknown) {
+      this.config = config;
+    });
+    vi.doMock('ollama', () => ({ Ollama: OllamaClass }));
+
+    const context = {
+      secrets: { get: vi.fn().mockResolvedValue('cloud-token') },
+    } as any;
+
+    const { getCloudOllamaClient } = await import('./client.js');
+    await getCloudOllamaClient(context);
+
+    expect(OllamaClass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: 'http://localhost:11434',
+        headers: { Authorization: 'Bearer cloud-token' },
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // testConnection
 // ---------------------------------------------------------------------------
 
