@@ -21,6 +21,7 @@ import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
 import { ThinkingParser } from './thinkingParser.js';
 import { truncateMessages } from './contextUtils.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
+import { registerStatusBarHeartbeat } from './statusBar.js';
 import {
   buildXmlToolSystemPrompt,
   extractXmlToolCalls,
@@ -1211,6 +1212,15 @@ export async function activate(context: vscode.ExtensionContext) {
       logPerformanceSnapshot(diagnostics, sidebarRegistration?.getProfilingSnapshot?.());
       void vscode.window.showInformationMessage('Performance snapshot written to Opilot logs');
     }),
+    vscode.commands.registerCommand('opilot.checkServerHealth', async () => {
+      const isConnected = await testConnection(client);
+      if (!isConnected) {
+        await handleConnectionTestFailure(host);
+      } else {
+        void vscode.window.showInformationMessage('Ollama server is reachable.');
+      }
+    }),
+    registerStatusBarHeartbeat(client, host, diagnostics),
     {
       dispose: () => stopLogStreaming(),
     },

@@ -114,6 +114,12 @@
         "category": "Ollama"
       },
       {
+        "command": "opilot.checkServerHealth",
+        "title": "Check Server Health",
+        "icon": "$(radio-tower)",
+        "category": "Ollama"
+      },
+      {
         "command": "opilot.filterLocalModels",
         "title": "Filter Local Models",
         "icon": "$(filter)",
