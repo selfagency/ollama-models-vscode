@@ -29,6 +29,8 @@
 
 - 🦙 **All Ollama Models** — Use any model from the [Ollama Library](https://ollama.ai/library), including Cloud models (after `ollama login`), as first-class Copilot chat models and as the `@ollama` participant
 - 🛠️ **Model Management Sidebar** — Pull, run, inspect, stop, and delete models from a dedicated Ollama activity bar panel with live status badges
+- 🎛️ **Per-Model Settings Panel** — Tune temperature, top-p/top-k, context, max tokens, and thinking budget from an in-editor webview; settings persist per model
+- 📡 **Status Bar Heartbeat** — Always-visible Ollama server indicator with running model count, connectivity state, and resource tooltip
 - 💬 **Chat Participant** — Invoke `@ollama` in Copilot Chat for a dedicated, history-aware conversation with your chosen local model
 - 📝 **Modelfile Manager** — Create, edit, and build custom Ollama modelfiles with syntax highlighting, hover documentation, and autocomplete
 - ⌨️ **Inline Code Completions** — Get fill-in-the-middle code suggestions powered by a local Ollama model as you type
@@ -60,7 +62,6 @@ The extension auto-detects your local Ollama instance at `http://localhost:11434
 Open VS Code Settings (`Ctrl+,` / `Cmd+,`) and search for "Ollama":
 
 - **`ollama.host`** - Ollama server address (default: `http://localhost:11434`)
-- **`ollama.contextLength`** - Override context window size in tokens (default: `0` = use model default)
 - **`ollama.streamLogs`** - Stream Ollama server logs to output channel (default: `true`)
 - **`ollama.localModelRefreshInterval`** - Auto-refresh interval for local and running models, in seconds (default: `30`)
 - **`ollama.libraryRefreshInterval`** - Reserved refresh interval for library and cloud model catalogs, in seconds (default: `21600`); panels currently refresh on startup and via the manual refresh button
@@ -111,10 +112,35 @@ The Ollama activity bar icon opens a sidebar with four panels:
 - View all locally installed models grouped by family (tree view) or as a flat list
 - Filter models by name using the filter icon in the panel header
 - Toggle between grouped tree view and flat list with the layout icon
+- Open **Model Settings** from the gear icon in the Local Models toolbar
 - Inline buttons per model: **Start** (▶), **Stop** (⏹), **Delete** (🗑)
 - Running models show VRAM usage and how long they've been loaded
 - Model capability badges: 🧠 thinking, 🛠️ tools, 👁️ vision, 🧩 embedding
 - Auto-refreshes every 30 seconds (configurable via `ollama.localModelRefreshInterval`); refresh interval restarts automatically when the setting changes
+
+### Model Settings Panel
+
+Open **Ollama: Open Model Settings** (or click the gear icon in Local Models) to configure per-model generation overrides:
+
+- Temperature
+- Top-P
+- Top-K
+- Context window (`num_ctx`)
+- Max tokens (`num_predict`)
+- Thinking toggle (`think`)
+- Thinking budget (`think_budget`)
+
+Changes apply immediately and are persisted per model in the extension global storage.
+
+### Status Bar Heartbeat
+
+Opilot adds a persistent status bar item:
+
+- `$(loading~spin) Ollama…` while checking
+- `$(pulse) Ollama` or `$(pulse) Ollama (N)` when reachable
+- `$(warning) Ollama offline` after debounced failures
+
+Click the status bar item (or run **Ollama: Check Server Health**) for an immediate connectivity check.
 
 #### Cloud Models
 

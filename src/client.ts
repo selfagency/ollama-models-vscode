@@ -177,13 +177,3 @@ export async function fetchModelCapabilities(client: Ollama, modelId: string): P
     };
   }
 }
-
-/**
- * Get the ollama.contextLength override from settings
- * Returns 0 if not set or invalid
- */
-export function getContextLengthOverride(): number {
-  const config = workspace.getConfiguration('ollama');
-  const value = config.get<number>('contextLength') || 0;
-  return value > 0 ? value : 0;
-}

@@ -4,7 +4,7 @@ title: User's Guide
 
 ## Overview
 
-The Opilot extension brings the full Ollama model ecosystem into VS Code. After installation and a model pull, you can use local AI models in Copilot Chat, as inline code completions, and in a dedicated `@ollama` chat participant — all without leaving the editor.
+The Opilot extension brings the full Ollama model ecosystem into VS Code. After installation and a model pull, you can use local AI models in Copilot Chat, as inline code completions, in a dedicated `@ollama` chat participant, with a persistent server heartbeat in the status bar, and with per-model generation controls in a settings webview — all without leaving the editor.
 
 ## Sidebar Layout
 
@@ -16,6 +16,22 @@ The Ollama activity bar icon opens a sidebar with four panels:
 - **Modelfiles** — Your custom `.modelfile` files for building personalized models.
 
 Each panel has toolbar icons for filtering, grouping, collapsing, and refreshing. See [Sidebar & Model Management](./sidebar) for the full panel reference.
+
+## Model Settings Webview
+
+Open **Ollama: Open Model Settings** (or use the gear button in the Local Models panel) to configure per-model options such as temperature, top-p/top-k, context, max tokens, and thinking budget.
+
+Changes apply immediately and are persisted per model in extension storage.
+
+## Status Bar Heartbeat
+
+Opilot exposes an always-visible status bar item showing:
+
+- loading state while checking server health
+- online state with running-model count
+- offline state after debounced failures
+
+Clicking the status bar item runs an immediate health check.
 
 ## Copilot Chat Integration
 

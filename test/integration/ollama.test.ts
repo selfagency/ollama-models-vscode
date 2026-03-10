@@ -66,13 +66,19 @@ beforeAll(async () => {
           host: 'https://ollama.com',
           headers: { Authorization: `Bearer ${cloudApiKey}` },
         });
-        await cloudClient.generate({
-          model: cloudModelName,
-          prompt: '',
-          stream: false,
-          keep_alive: 0,
-          options: { num_predict: 1 },
-        });
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('cloud auth check timed out')), 15_000),
+        );
+        await Promise.race([
+          cloudClient.generate({
+            model: cloudModelName,
+            prompt: '',
+            stream: false,
+            keep_alive: 0,
+            options: { num_predict: 1 },
+          } as Parameters<typeof cloudClient.generate>[0]),
+          timeout,
+        ]);
         cloudAuthValid = true;
       } catch {
         console.log(`Cloud auth validation failed for ${cloudModelName} — cloud tests will be skipped.`);

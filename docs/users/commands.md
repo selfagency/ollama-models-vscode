@@ -30,6 +30,24 @@ Downloads a model from the Ollama library by name (e.g. `llama3.2:3b`). Opens a 
 
 Permanently removes an installed model and its weights from disk. Prompts for confirmation. Available via the **🗑** context menu on a local model item.
 
+## Model Parameters
+
+### `Ollama: Open Model Settings`
+
+Opens the per-model settings webview panel. Also available via the **⚙** toolbar button in the **Local Models** view.
+
+Use it to tune model-specific generation options:
+
+- Temperature
+- Top-P
+- Top-K
+- Context window (`num_ctx`)
+- Max tokens (`num_predict`)
+- Thinking toggle (`think`)
+- Thinking budget (`think_budget`)
+
+Changes are applied immediately and persisted per model.
+
 ## Sidebar — Local Models
 
 ### `Ollama: Refresh Local Ollama Models`
@@ -148,6 +166,10 @@ Reveals the modelfiles directory (`ollama.modelfilesPath` or `~/.ollama/modelfil
 Rescans the modelfiles directory and updates the panel.
 
 ## Diagnostics
+
+### `Ollama: Check Server Health`
+
+Runs an immediate connectivity check against the configured `ollama.host` and reports whether the server is reachable. The same check is available from the status bar heartbeat item.
 
 ### `Ollama: Dump Performance Snapshot`
 

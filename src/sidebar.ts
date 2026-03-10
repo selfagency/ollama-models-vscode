@@ -737,6 +737,11 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
             model.size,
             running?.durationMs,
           );
+          item.command = {
+            command: 'opilot.openModelSettingsForModel',
+            title: 'Open Model Settings',
+            arguments: [model.name],
+          };
           // Set initial tooltip
           item.tooltip = buildLocalModelTooltip(model.name, model.size, running);
           // Fetch tooltip description asynchronously
@@ -2125,6 +2130,11 @@ export class CloudModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
           runningInfo?.size,
           runningInfo?.durationMs,
         );
+        item.command = {
+          command: 'opilot.openModelSettingsForModel',
+          title: 'Open Model Settings',
+          arguments: [fullName],
+        };
 
         const caps = this.cloudCapabilitiesByBase.get(baseName.toLowerCase());
         const isThinking = caps?.has('thinking') || isThinkingModelId(fullName);

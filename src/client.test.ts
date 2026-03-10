@@ -4,12 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Helper: build a minimal vscode mock
 // ---------------------------------------------------------------------------
 
-const makeVscodeMock = (host = 'http://localhost:11434', contextLength = 0) => ({
+const makeVscodeMock = (host = 'http://localhost:11434') => ({
   workspace: {
     getConfiguration: vi.fn(() => ({
       get: vi.fn((key: string) => {
         if (key === 'host') return host;
-        if (key === 'contextLength') return contextLength;
         return undefined;
       }),
     })),
@@ -434,43 +433,5 @@ describe('fetchModelCapabilities', () => {
     const caps = await fetchModelCapabilities(client, 'llama3.2:latest');
 
     expect(caps.maxInputTokens).toBe(4096);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getContextLengthOverride
-// ---------------------------------------------------------------------------
-
-describe('getContextLengthOverride', () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('returns 0 when contextLength is not set', async () => {
-    vi.doMock('vscode', () => makeVscodeMock('http://localhost:11434', 0));
-    vi.doMock('ollama', () => ({ Ollama: class {} }));
-
-    const { getContextLengthOverride } = await import('./client.js');
-    expect(getContextLengthOverride()).toBe(0);
-  });
-
-  it('returns the configured value when set', async () => {
-    vi.doMock('vscode', () => makeVscodeMock('http://localhost:11434', 8192));
-    vi.doMock('ollama', () => ({ Ollama: class {} }));
-
-    const { getContextLengthOverride } = await import('./client.js');
-    expect(getContextLengthOverride()).toBe(8192);
-  });
-
-  it('returns 0 when contextLength is negative', async () => {
-    vi.doMock('vscode', () => makeVscodeMock('http://localhost:11434', -1));
-    vi.doMock('ollama', () => ({ Ollama: class {} }));
-
-    const { getContextLengthOverride } = await import('./client.js');
-    expect(getContextLengthOverride()).toBe(0);
   });
 });

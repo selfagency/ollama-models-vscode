@@ -1,5 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import type { DiagnosticsLogger } from './diagnostics.js';
+
+const MODEL_SETTINGS_FILE = 'model-settings.json';
 
 /**
  * Minimal context shape required by the model settings helpers.
@@ -23,111 +26,93 @@ export interface ModelOptions {
   think_budget?: number;
 }
 
-/**
- * Root shape of the persisted model settings file.
- * Keys are model IDs (e.g. "llama3.2", "mistral:7b").
- */
-export type ModelSettingsMap = Record<string, ModelOptions>;
+export type ModelOptionOverrides = ModelOptions;
 
-/**
- * Returns the absolute path to the model settings JSON file.
- * Stored alongside the extension's global storage directory.
- */
-export function getModelSettingsFilePath(context: ModelSettingsContext): string {
-  return join(context.globalStorageUri.fsPath, 'modelSettings.json');
+export type ModelSettingsStore = Record<string, ModelOptionOverrides>;
+
+type StorageUri = Pick<{ fsPath: string }, 'fsPath'>;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-/**
- * Sanitize a raw (possibly user-supplied) ModelOptions object.
- * - Drops keys with the wrong type.
- * - Clamps/coerces numbers to finite values.
- * Returns a clean ModelOptions (may be empty if all fields are invalid).
- */
-export function sanitizeModelOptions(raw: unknown): ModelOptions {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+function sanitizeModelOptions(value: unknown): ModelOptionOverrides {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
   }
 
-  const obj = raw as Record<string, unknown>;
-  const result: ModelOptions = {};
+  const candidate = value as Record<string, unknown>;
+  const sanitized: ModelOptionOverrides = {};
 
-  // Float fields
-  for (const key of ['temperature', 'top_p'] as const) {
-    const val = obj[key];
-    if (typeof val === 'number' && isFinite(val)) {
-      result[key] = val;
+  if (isFiniteNumber(candidate.temperature)) sanitized.temperature = candidate.temperature;
+  if (isFiniteNumber(candidate.top_p)) sanitized.top_p = candidate.top_p;
+  if (isFiniteNumber(candidate.top_k)) sanitized.top_k = candidate.top_k;
+  if (isFiniteNumber(candidate.num_ctx)) sanitized.num_ctx = candidate.num_ctx;
+  if (isFiniteNumber(candidate.num_predict)) sanitized.num_predict = candidate.num_predict;
+  if (typeof candidate.think === 'boolean') sanitized.think = candidate.think;
+  if (isFiniteNumber(candidate.think_budget)) sanitized.think_budget = candidate.think_budget;
+
+  return sanitized;
+}
+
+function sanitizeStore(value: unknown): ModelSettingsStore {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const raw = value as Record<string, unknown>;
+  const sanitized: ModelSettingsStore = {};
+
+  for (const [modelId, options] of Object.entries(raw)) {
+    if (!modelId) {
+      continue;
     }
+    sanitized[modelId] = sanitizeModelOptions(options);
   }
 
-  // Integer fields
-  for (const key of ['top_k', 'num_ctx', 'num_predict', 'think_budget'] as const) {
-    const val = obj[key];
-    if (typeof val === 'number' && isFinite(val)) {
-      result[key] = Math.trunc(val);
+  return sanitized;
+}
+
+export function getModelSettingsFilePath(globalStorageUri: StorageUri): string {
+  return join(globalStorageUri.fsPath, MODEL_SETTINGS_FILE);
+}
+
+export async function loadModelSettings(
+  globalStorageUri: StorageUri,
+  diagnostics?: Pick<DiagnosticsLogger, 'warn' | 'exception'>,
+): Promise<ModelSettingsStore> {
+  const filePath = getModelSettingsFilePath(globalStorageUri);
+
+  try {
+    const raw = await readFile(filePath, 'utf8');
+    return sanitizeStore(JSON.parse(raw));
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError?.code === 'ENOENT') {
+      return {};
     }
-  }
 
-  // Boolean fields
-  if (typeof obj['think'] === 'boolean') {
-    result.think = obj['think'];
+    diagnostics?.exception('[model-settings] failed to load model settings, using defaults', error);
+    return {};
   }
-
-  return result;
 }
 
-/**
- * Load model settings from storage. Returns an empty map if the file does not
- * exist or contains invalid JSON / unexpected structure.
- */
-export async function loadModelSettings(context: ModelSettingsContext): Promise<ModelSettingsMap> {
-  const filePath = getModelSettingsFilePath(context);
-  let raw: string;
+export async function saveModelSettings(
+  globalStorageUri: StorageUri,
+  store: ModelSettingsStore,
+  diagnostics?: Pick<DiagnosticsLogger, 'exception'>,
+): Promise<void> {
+  const filePath = getModelSettingsFilePath(globalStorageUri);
+
   try {
-    raw = await readFile(filePath, 'utf8');
-  } catch {
-    return {};
+    await mkdir(globalStorageUri.fsPath, { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(sanitizeStore(store), null, 2)}\n`, 'utf8');
+  } catch (error) {
+    diagnostics?.exception('[model-settings] failed to save model settings', error);
+    throw error;
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return {};
-  }
-
-  const result: ModelSettingsMap = {};
-  for (const [modelId, opts] of Object.entries(parsed as Record<string, unknown>)) {
-    result[modelId] = sanitizeModelOptions(opts);
-  }
-  return result;
 }
 
-/**
- * Persist the full model settings map to storage.
- * Creates the directory if it does not yet exist.
- */
-export async function saveModelSettings(context: ModelSettingsContext, settings: ModelSettingsMap): Promise<void> {
-  const filePath = getModelSettingsFilePath(context);
-  await mkdir(dirname(filePath), { recursive: true });
-
-  // Sanitize each entry before writing.
-  const sanitized: ModelSettingsMap = {};
-  for (const [modelId, opts] of Object.entries(settings)) {
-    sanitized[modelId] = sanitizeModelOptions(opts);
-  }
-
-  await writeFile(filePath, `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
-}
-
-/**
- * Returns the persisted ModelOptions for `modelId`, or an empty object if no
- * settings have been saved for that model.
- */
-export async function getModelOptionsForModel(context: ModelSettingsContext, modelId: string): Promise<ModelOptions> {
-  const settings = await loadModelSettings(context);
-  return settings[modelId] ?? {};
+export function getModelOptionsForModel(store: ModelSettingsStore, modelId: string): ModelOptionOverrides {
+  return store[modelId] ?? {};
 }

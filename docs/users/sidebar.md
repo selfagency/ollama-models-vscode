@@ -18,12 +18,10 @@ Toggle to a flat list with the **Show as Flat List** button (⊞) in the panel h
 
 Each model item shows capability indicators:
 
-| Badge | Meaning                     |
-| ----- | --------------------------- |
-| 🧠    | Thinking / chain-of-thought |
-| 🛠    | Tool calling                |
-| 👁    | Vision (image input)        |
-| 🧩    | Embedding model             |
+- 🧠 Thinking / chain-of-thought
+- 🛠 Tool calling
+- 👁 Vision (image input)
+- 🧩 Embedding model
 
 ### Status Indicators
 
@@ -44,16 +42,39 @@ Running models cannot be deleted — stop them first.
 
 ### Panel Toolbar
 
-| Button         | Action                                 |
-| -------------- | -------------------------------------- |
-| 🔑             | Manage auth token for remote instances |
-| 🔍 Filter      | Type to filter by model name           |
-| ✕ Clear filter | Remove active filter                   |
-| ⊞ / ⊟          | Toggle grouped tree / flat list        |
-| 🔄 Refresh     | Reload local model list                |
-| ⊖ Collapse all | Collapse all family groups             |
+| Button           | Action                                 |
+| ---------------- | -------------------------------------- |
+| 🔑               | Manage auth token for remote instances |
+| ⚙ Model settings | Open per-model parameter controls      |
+| 🔍 Filter        | Type to filter by model name           |
+| ✕ Clear filter   | Remove active filter                   |
+| ⊞ / ⊟            | Toggle grouped tree / flat list        |
+| 🔄 Refresh       | Reload local model list                |
+| ⊖ Collapse all   | Collapse all family groups             |
 
 The list auto-refreshes every 30 seconds (configurable via `ollama.localModelRefreshInterval`).
+
+### Model Settings Webview
+
+Use the **⚙ Model settings** button (or `Ollama: Open Model Settings`) to open a webview with per-model controls for:
+
+- `temperature`, `top_p`, `top_k`
+- `num_ctx`, `num_predict`
+- `think`, `think_budget`
+
+Updates are applied immediately and persisted per model.
+
+---
+
+## Status Bar Heartbeat
+
+Outside the sidebar, Opilot shows a persistent status bar heartbeat:
+
+- **Loading:** `$(loading~spin) Ollama…`
+- **Online:** `$(pulse) Ollama` or `$(pulse) Ollama (N)`
+- **Offline:** `$(warning) Ollama offline` (after 2 consecutive failures)
+
+The tooltip includes host, per-model memory, and processor (CPU/GPU) details for currently running models.
 
 ---
 

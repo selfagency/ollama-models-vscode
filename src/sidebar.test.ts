@@ -243,7 +243,7 @@ describe('LocalModelsProvider', () => {
     libraryProvider.dispose();
   });
 
-  it('does not auto-open cloud models when clicked', async () => {
+  it('cloud model items have opilot.openModelSettingsForModel command', async () => {
     vi.resetModules();
 
     vi.doMock('./client.js', () => ({
@@ -325,7 +325,7 @@ describe('LocalModelsProvider', () => {
     cloudProvider.grouped = false;
     const models = await cloudProvider.getChildren();
     expect(models[0].type).toBe('cloud-stopped');
-    expect(models[0].command).toBeUndefined();
+    expect(models[0].command).toEqual(expect.objectContaining({ command: 'opilot.openModelSettingsForModel' }));
     cloudProvider.dispose();
   });
 

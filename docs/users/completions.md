@@ -47,4 +47,4 @@ Toggle `ollama.enableInlineCompletions` to `false` in Settings at any time. You 
 
 - Switch to a smaller quantized model (1–3 B parameters)
 - Verify no other processes are competing for GPU/RAM
-- Consider increasing `ollama.contextLength` to a smaller value to reduce the model's working context
+- Consider switching to a smaller quantized model (1–3 B parameters) to reduce the model's working context

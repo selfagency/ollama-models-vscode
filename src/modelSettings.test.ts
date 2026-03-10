@@ -1,265 +1,180 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// ---------------------------------------------------------------------------
-// node:fs/promises mock — set up before importing the module under test
-// ---------------------------------------------------------------------------
-
-const { mockReadFile, mockWriteFile, mockMkdir } = vi.hoisted(() => ({
-  mockReadFile: vi.fn<(path: string, encoding: string) => Promise<string>>(),
-  mockWriteFile: vi.fn<(path: string, data: string, encoding: string) => Promise<void>>(),
-  mockMkdir: vi.fn<(path: string, opts: { recursive: boolean }) => Promise<void>>(),
-}));
-
-vi.mock('node:fs/promises', () => ({
-  readFile: mockReadFile,
-  writeFile: mockWriteFile,
-  mkdir: mockMkdir,
-}));
-
-// ---------------------------------------------------------------------------
-// Module under test (imported after the mock is in place)
-// ---------------------------------------------------------------------------
+// Module under test
 
 import {
   getModelOptionsForModel,
   getModelSettingsFilePath,
   loadModelSettings,
-  sanitizeModelOptions,
   saveModelSettings,
+  type ModelSettingsStore,
 } from './modelSettings.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+describe('modelSettings persistence', () => {
+  const tempDirs: string[] = [];
 
-function makeContext(fsPath = '/fake/global/storage/selfagency.ollama') {
-  return { globalStorageUri: { fsPath } };
-}
-
-// ---------------------------------------------------------------------------
-// getModelSettingsFilePath
-// ---------------------------------------------------------------------------
-
-describe('getModelSettingsFilePath', () => {
-  it('returns the correct path within globalStorageUri', () => {
-    const ctx = makeContext('/my/storage');
-    expect(getModelSettingsFilePath(ctx)).toBe('/my/storage/modelSettings.json');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// sanitizeModelOptions
-// ---------------------------------------------------------------------------
-
-describe('sanitizeModelOptions', () => {
-  it('returns empty object for null/undefined/non-object input', () => {
-    expect(sanitizeModelOptions(null)).toEqual({});
-    expect(sanitizeModelOptions(undefined)).toEqual({});
-    expect(sanitizeModelOptions('string')).toEqual({});
-    expect(sanitizeModelOptions(42)).toEqual({});
-    expect(sanitizeModelOptions([])).toEqual({});
+  afterEach(async () => {
+    await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
   });
 
-  it('passes through valid float fields', () => {
-    expect(sanitizeModelOptions({ temperature: 0.7, top_p: 0.9 })).toEqual({ temperature: 0.7, top_p: 0.9 });
+  async function createStorageUri(): Promise<{ fsPath: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'opilot-model-settings-'));
+    tempDirs.push(dir);
+    return { fsPath: dir };
+  }
+
+  it('returns empty store when settings file does not exist', async () => {
+    const storageUri = await createStorageUri();
+    const loaded = await loadModelSettings(storageUri);
+    expect(loaded).toEqual({});
   });
 
-  it('passes through valid integer fields (truncating floats)', () => {
-    expect(sanitizeModelOptions({ top_k: 40, num_ctx: 4096, num_predict: 100, think_budget: 512 })).toEqual({
-      top_k: 40,
-      num_ctx: 4096,
-      num_predict: 100,
-      think_budget: 512,
-    });
-    expect(sanitizeModelOptions({ num_ctx: 2048.9 })).toEqual({ num_ctx: 2048 });
+  it('builds model settings file path under global storage', async () => {
+    const storageUri = await createStorageUri();
+    const filePath = getModelSettingsFilePath(storageUri);
+
+    expect(filePath).toBe(join(storageUri.fsPath, 'model-settings.json'));
   });
 
-  it('passes through boolean think field', () => {
-    expect(sanitizeModelOptions({ think: true })).toEqual({ think: true });
-    expect(sanitizeModelOptions({ think: false })).toEqual({ think: false });
-  });
-
-  it('drops fields with wrong types', () => {
-    expect(
-      sanitizeModelOptions({
-        temperature: 'hot',
-        top_p: null,
-        top_k: '40',
-        num_ctx: true,
-        think: 1,
-      }),
-    ).toEqual({});
-  });
-
-  it('drops Infinity and NaN for numeric fields', () => {
-    expect(sanitizeModelOptions({ temperature: Infinity, top_k: NaN })).toEqual({});
-  });
-
-  it('ignores unknown keys', () => {
-    const result = sanitizeModelOptions({ temperature: 0.5, unknown_key: 'value' });
-    expect(result).toEqual({ temperature: 0.5 });
-    expect('unknown_key' in result).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// loadModelSettings
-// ---------------------------------------------------------------------------
-
-describe('loadModelSettings', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns empty map when file does not exist (ENOENT)', async () => {
-    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    mockReadFile.mockRejectedValue(err);
-    expect(await loadModelSettings(makeContext())).toEqual({});
-  });
-
-  it('returns empty map when file contains malformed JSON', async () => {
-    mockReadFile.mockResolvedValue('not valid json{{{');
-    expect(await loadModelSettings(makeContext())).toEqual({});
-  });
-
-  it('returns empty map when JSON root is not an object', async () => {
-    mockReadFile.mockResolvedValue(JSON.stringify([{ model: 'llama3.2' }]));
-    expect(await loadModelSettings(makeContext())).toEqual({});
-
-    mockReadFile.mockResolvedValue('"just a string"');
-    expect(await loadModelSettings(makeContext())).toEqual({});
-
-    mockReadFile.mockResolvedValue('42');
-    expect(await loadModelSettings(makeContext())).toEqual({});
-  });
-
-  it('loads and sanitizes a well-formed settings file', async () => {
-    const stored = {
-      'llama3.2': { temperature: 0.8, num_ctx: 4096, think: true },
-      'mistral:7b': { top_p: 0.95, top_k: 50 },
+  it('saves and loads model settings from global storage', async () => {
+    const storageUri = await createStorageUri();
+    const input: ModelSettingsStore = {
+      'llama3.2:latest': {
+        temperature: 0.4,
+        top_p: 0.9,
+        top_k: 40,
+        num_ctx: 8192,
+        num_predict: 512,
+        think: true,
+        think_budget: 2048,
+      },
     };
-    mockReadFile.mockResolvedValue(JSON.stringify(stored));
 
-    const result = await loadModelSettings(makeContext());
-    expect(result['llama3.2']).toEqual({ temperature: 0.8, num_ctx: 4096, think: true });
-    expect(result['mistral:7b']).toEqual({ top_p: 0.95, top_k: 50 });
+    await saveModelSettings(storageUri, input);
+    const loaded = await loadModelSettings(storageUri);
+
+    expect(loaded).toEqual(input);
   });
 
-  it('sanitizes invalid option values on load', async () => {
-    const stored = {
-      'llama3.2': { temperature: 'hot', num_ctx: 4096, think: 'yes' },
-    };
-    mockReadFile.mockResolvedValue(JSON.stringify(stored));
+  it('sanitizes unknown/invalid values while loading', async () => {
+    const storageUri = await createStorageUri();
+    const filePath = getModelSettingsFilePath(storageUri);
 
-    const result = await loadModelSettings(makeContext());
-    expect(result['llama3.2']).toEqual({ num_ctx: 4096 });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// saveModelSettings
-// ---------------------------------------------------------------------------
-
-describe('saveModelSettings', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('creates the storage directory before writing', async () => {
-    const ctx = makeContext('/my/storage');
-    await saveModelSettings(ctx, {});
-    expect(mockMkdir).toHaveBeenCalledWith('/my/storage', { recursive: true });
-  });
-
-  it('writes sanitized JSON to the correct path', async () => {
-    const ctx = makeContext('/my/storage');
-    const settings = { 'llama3.2': { temperature: 0.7, num_ctx: 4096 } };
-    await saveModelSettings(ctx, settings);
-
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      '/my/storage/modelSettings.json',
-      expect.stringContaining('"llama3.2"'),
+    await writeFile(
+      filePath,
+      JSON.stringify(
+        {
+          'llama3.2:latest': {
+            temperature: 0.6,
+            top_p: 'bad',
+            top_k: 50,
+            num_ctx: 4096,
+            num_predict: -1,
+            think: 'yes',
+            think_budget: 1024,
+            ignored: 'value',
+          },
+          '': {
+            temperature: 1,
+          },
+          invalid: ['not-object'],
+        },
+        null,
+        2,
+      ),
       'utf8',
     );
+
+    const loaded = await loadModelSettings(storageUri);
+
+    expect(loaded).toEqual({
+      'llama3.2:latest': {
+        temperature: 0.6,
+        top_k: 50,
+        num_ctx: 4096,
+        num_predict: -1,
+        think_budget: 1024,
+      },
+      invalid: {},
+    });
   });
 
-  it('sanitizes invalid values before writing', async () => {
-    const ctx = makeContext('/my/storage');
-    const settings = { 'llama3.2': { temperature: 'hot' as unknown as number, num_ctx: 4096 } };
-    await saveModelSettings(ctx, settings);
+  it('returns empty store when JSON root is not an object', async () => {
+    const storageUri = await createStorageUri();
+    const filePath = getModelSettingsFilePath(storageUri);
 
-    const written = mockWriteFile.mock.calls[0][1] as string;
-    const parsed = JSON.parse(written);
-    expect(parsed['llama3.2']).toEqual({ num_ctx: 4096 });
-    expect('temperature' in parsed['llama3.2']).toBe(false);
+    await writeFile(filePath, JSON.stringify(['not', 'an', 'object']), 'utf8');
+
+    const loaded = await loadModelSettings(storageUri);
+    expect(loaded).toEqual({});
   });
 
-  it('roundtrips save then load', async () => {
-    const ctx = makeContext('/my/storage');
-    const settings = {
-      'llama3.2': { temperature: 0.8, num_ctx: 4096, think: true },
-      'mistral:7b': { top_p: 0.95 },
+  it('writes pretty JSON with trailing newline', async () => {
+    const storageUri = await createStorageUri();
+    await saveModelSettings(storageUri, { modelA: { temperature: 1 } });
+
+    const raw = await readFile(getModelSettingsFilePath(storageUri), 'utf8');
+    expect(raw.endsWith('\n')).toBe(true);
+    expect(raw).toContain('"modelA"');
+  });
+
+  it('sanitizes values while saving (drops invalid fields and empty model keys)', async () => {
+    const storageUri = await createStorageUri();
+
+    await saveModelSettings(storageUri, {
+      'llama3.2:latest': {
+        temperature: Number.POSITIVE_INFINITY,
+        top_p: 0.92,
+        think: true,
+      },
+      '': {
+        temperature: 1,
+      },
+      invalid: {
+        num_ctx: Number.NaN,
+      },
+    });
+
+    const loaded = await loadModelSettings(storageUri);
+    expect(loaded).toEqual({
+      'llama3.2:latest': {
+        top_p: 0.92,
+        think: true,
+      },
+      invalid: {},
+    });
+  });
+
+  it('returns empty options for unknown model', () => {
+    const result = getModelOptionsForModel({ modelA: { temperature: 0.7 } }, 'missing');
+    expect(result).toEqual({});
+  });
+
+  it('returns stored options for known model', () => {
+    const store: ModelSettingsStore = {
+      modelA: { temperature: 0.7, top_k: 30 },
     };
 
-    let stored = '';
-    mockWriteFile.mockImplementation(async (_p, data) => {
-      stored = data as string;
-    });
-    mockReadFile.mockImplementation(async () => stored);
-
-    await saveModelSettings(ctx, settings);
-    const loaded = await loadModelSettings(ctx);
-
-    expect(loaded['llama3.2']).toEqual({ temperature: 0.8, num_ctx: 4096, think: true });
-    expect(loaded['mistral:7b']).toEqual({ top_p: 0.95 });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getModelOptionsForModel
-// ---------------------------------------------------------------------------
-
-describe('getModelOptionsForModel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+    const result = getModelOptionsForModel(store, 'modelA');
+    expect(result).toEqual({ temperature: 0.7, top_k: 30 });
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+  it('logs and returns empty store for malformed JSON', async () => {
+    const storageUri = await createStorageUri();
+    const filePath = getModelSettingsFilePath(storageUri);
+    const diagnostics = {
+      warn: vi.fn(),
+      exception: vi.fn(),
+    };
 
-  it('returns options for a known model', async () => {
-    const stored = { 'llama3.2': { temperature: 0.5, num_ctx: 2048 } };
-    mockReadFile.mockResolvedValue(JSON.stringify(stored));
+    await writeFile(filePath, '{not-json', 'utf8');
 
-    const opts = await getModelOptionsForModel(makeContext(), 'llama3.2');
-    expect(opts).toEqual({ temperature: 0.5, num_ctx: 2048 });
-  });
-
-  it('returns empty object for an unknown model', async () => {
-    mockReadFile.mockResolvedValue(JSON.stringify({ 'llama3.2': { temperature: 0.5 } }));
-
-    const opts = await getModelOptionsForModel(makeContext(), 'unknown-model');
-    expect(opts).toEqual({});
-  });
-
-  it('returns empty object when settings file is missing', async () => {
-    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    mockReadFile.mockRejectedValue(err);
-
-    const opts = await getModelOptionsForModel(makeContext(), 'llama3.2');
-    expect(opts).toEqual({});
+    const loaded = await loadModelSettings(storageUri, diagnostics);
+    expect(loaded).toEqual({});
+    expect(diagnostics.exception).toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promises as fsPromises } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { ChatResponse, Message, Ollama, Tool } from 'ollama';
+import type { ChatResponse, Message, Ollama, Options, Tool } from 'ollama';
 import * as vscode from 'vscode';
 import { getCloudOllamaClient, getOllamaAuthToken, getOllamaClient, getOllamaHost, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
@@ -16,9 +16,17 @@ import {
   splitLeadingXmlContextBlocks,
 } from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
+import {
+  loadModelSettings,
+  saveModelSettings,
+  getModelOptionsForModel,
+  type ModelOptionOverrides,
+  type ModelSettingsStore,
+} from './modelSettings.js';
 import { chatCompletionsOnce, initiateChatCompletionsStream } from './openaiCompat.js';
 import { ollamaMessagesToOpenAICompat, ollamaToolsToOpenAICompat } from './openaiCompatMapping.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
+import { createModelSettingsViewProvider, MODEL_SETTINGS_VIEW_ID } from './settingsWebview.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
 import { registerStatusBarHeartbeat } from './statusBar.js';
 import { ThinkingParser } from './thinkingParser.js';
@@ -105,7 +113,9 @@ async function openAiCompatStreamChat(params: {
   effectiveClient: Ollama;
   extensionContext?: vscode.ExtensionContext;
   signal?: AbortSignal;
+  modelOptions?: ModelOptionOverrides;
 }): Promise<AsyncIterable<ChatResponse>> {
+  const { temperature, top_p, num_predict, top_k, num_ctx, think_budget } = params.modelOptions ?? {};
   try {
     const baseUrl = getOllamaHost();
     const authToken = params.extensionContext ? await getOllamaAuthToken(params.extensionContext) : undefined;
@@ -122,6 +132,12 @@ async function openAiCompatStreamChat(params: {
         messages: ollamaMessagesToOpenAICompat(params.messages),
         tools: ollamaToolsToOpenAICompat(params.tools),
         ...(params.shouldThink ? { think: true } : {}),
+        ...(temperature !== undefined ? { temperature } : {}),
+        ...(top_p !== undefined ? { top_p } : {}),
+        ...(num_predict !== undefined ? { max_tokens: num_predict } : {}),
+        ...(top_k !== undefined ? { top_k } : {}),
+        ...(num_ctx !== undefined ? { num_ctx } : {}),
+        ...(think_budget !== undefined ? { think_budget } : {}),
       },
     });
 
@@ -145,12 +161,14 @@ async function openAiCompatStreamChat(params: {
       }
     })();
   } catch {
+    const sdkOptions = params.modelOptions ? buildSdkOptions(params.modelOptions) : undefined;
     return params.effectiveClient.chat({
       model: params.modelId,
       messages: params.messages,
       stream: true,
       ...(params.tools ? { tools: params.tools } : {}),
       ...(params.shouldThink ? { think: true } : {}),
+      ...(sdkOptions ? { options: sdkOptions } : {}),
     });
   }
 }
@@ -163,7 +181,9 @@ async function openAiCompatChatOnce(params: {
   effectiveClient: Ollama;
   extensionContext?: vscode.ExtensionContext;
   signal?: AbortSignal;
+  modelOptions?: ModelOptionOverrides;
 }): Promise<ChatResponse> {
+  const { temperature, top_p, num_predict, top_k, num_ctx, think_budget } = params.modelOptions ?? {};
   try {
     const baseUrl = getOllamaHost();
     const authToken = params.extensionContext ? await getOllamaAuthToken(params.extensionContext) : undefined;
@@ -177,6 +197,12 @@ async function openAiCompatChatOnce(params: {
         messages: ollamaMessagesToOpenAICompat(params.messages),
         tools: ollamaToolsToOpenAICompat(params.tools),
         ...(params.shouldThink ? { think: true } : {}),
+        ...(temperature !== undefined ? { temperature } : {}),
+        ...(top_p !== undefined ? { top_p } : {}),
+        ...(num_predict !== undefined ? { max_tokens: num_predict } : {}),
+        ...(top_k !== undefined ? { top_k } : {}),
+        ...(num_ctx !== undefined ? { num_ctx } : {}),
+        ...(think_budget !== undefined ? { think_budget } : {}),
       },
     });
 
@@ -195,12 +221,14 @@ async function openAiCompatChatOnce(params: {
       done: true,
     } as ChatResponse;
   } catch {
+    const sdkOptions = params.modelOptions ? buildSdkOptions(params.modelOptions) : undefined;
     return (await params.effectiveClient.chat({
       model: params.modelId,
       messages: params.messages,
       stream: false,
       ...(params.tools ? { tools: params.tools } : {}),
       ...(params.shouldThink ? { think: true } : {}),
+      ...(sdkOptions ? { options: sdkOptions } : {}),
     })) as ChatResponse;
   }
 }
@@ -211,13 +239,16 @@ async function nativeSdkStreamChat(params: {
   tools?: Tool[];
   shouldThink: boolean;
   effectiveClient: Ollama;
+  modelOptions?: ModelOptionOverrides;
 }): Promise<AsyncIterable<ChatResponse>> {
+  const sdkOptions = params.modelOptions ? buildSdkOptions(params.modelOptions) : undefined;
   return params.effectiveClient.chat({
     model: params.modelId,
     messages: params.messages,
     stream: true,
     ...(params.tools ? { tools: params.tools } : {}),
     ...(params.shouldThink ? { think: true } : {}),
+    ...(sdkOptions ? { options: sdkOptions } : {}),
   });
 }
 
@@ -227,17 +258,37 @@ async function nativeSdkChatOnce(params: {
   tools?: Tool[];
   shouldThink: boolean;
   effectiveClient: Ollama;
+  modelOptions?: ModelOptionOverrides;
 }): Promise<ChatResponse> {
+  const sdkOptions = params.modelOptions ? buildSdkOptions(params.modelOptions) : undefined;
   return (await params.effectiveClient.chat({
     model: params.modelId,
     messages: params.messages,
     stream: false,
     ...(params.tools ? { tools: params.tools } : {}),
     ...(params.shouldThink ? { think: true } : {}),
+    ...(sdkOptions ? { options: sdkOptions } : {}),
   })) as ChatResponse;
 }
 
 // normalizeToolParameters/isToolsNotSupportedError moved to src/toolUtils.ts
+
+/**
+ * Build an Ollama SDK options object from per-model overrides.
+ * Returns undefined when no overrides are set so callers can omit the field entirely.
+ */
+function buildSdkOptions(overrides: ModelOptionOverrides): Partial<Options> | undefined {
+  const { temperature, top_p, top_k, num_ctx, num_predict, think_budget } = overrides;
+  const opts: Record<string, number> = {};
+  if (temperature !== undefined) opts['temperature'] = temperature;
+  if (top_p !== undefined) opts['top_p'] = top_p;
+  if (top_k !== undefined) opts['top_k'] = top_k;
+  if (num_ctx !== undefined) opts['num_ctx'] = num_ctx;
+  if (num_predict !== undefined) opts['num_predict'] = num_predict;
+  // think_budget is not yet in the Ollama SDK's Options type but is forwarded as-is
+  if (think_budget !== undefined) opts['think_budget'] = think_budget;
+  return Object.keys(opts).length > 0 ? (opts as Partial<Options>) : undefined;
+}
 
 export function isSelectedAction(selection: unknown, actionLabel: string): boolean {
   if (typeof selection === 'string') {
@@ -542,6 +593,7 @@ export async function handleChatRequest(
   client?: Ollama,
   outputChannel?: DiagnosticsLogger,
   extensionContext?: vscode.ExtensionContext,
+  modelSettings?: ModelSettingsStore,
 ): Promise<void> {
   const messages: vscode.LanguageModelChatMessage[] = [];
 
@@ -585,6 +637,9 @@ export async function handleChatRequest(
     const cloudModelTag = modelId.split(':')[1] ?? '';
     const isCloudModel = cloudModelTag === 'cloud' || cloudModelTag.endsWith('-cloud');
     const effectiveClient = isCloudModel && extensionContext ? await getCloudOllamaClient(extensionContext) : client;
+
+    // Resolve per-model generation overrides (temperature, top_p, top_k, num_ctx, num_predict, think, think_budget).
+    const modelOptions = modelSettings ? getModelOptionsForModel(modelSettings, modelId) : {};
 
     try {
       // Convert VS Code messages to the plain Ollama format expected by the client.
@@ -643,7 +698,8 @@ export async function handleChatRequest(
           },
         }));
 
-        const shouldThinkInToolLoop = isThinkingModelId(modelId);
+        const shouldThinkInToolLoop =
+          typeof modelOptions.think === 'boolean' ? modelOptions.think : isThinkingModelId(modelId);
         const MAX_TOOL_ROUNDS = 10;
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           if (token.isCancellationRequested) {
@@ -660,6 +716,7 @@ export async function handleChatRequest(
                   shouldThink: shouldThinkInToolLoop,
                   effectiveClient,
                   extensionContext,
+                  modelOptions,
                 })
               : nativeSdkChatOnce({
                   modelId,
@@ -667,6 +724,7 @@ export async function handleChatRequest(
                   tools: ollamaTools,
                   shouldThink: shouldThinkInToolLoop,
                   effectiveClient,
+                  modelOptions,
                 }));
           } catch (toolError) {
             if (isToolsNotSupportedError(toolError)) {
@@ -775,12 +833,14 @@ export async function handleChatRequest(
                 shouldThink: false,
                 effectiveClient,
                 extensionContext,
+                modelOptions,
               })
             : nativeSdkChatOnce({
                 modelId,
                 messages: xmlConversation,
                 shouldThink: false,
                 effectiveClient,
+                modelOptions,
               }));
 
           const responseText = xmlResponse.message.content ?? '';
@@ -837,7 +897,9 @@ export async function handleChatRequest(
         // MAX_XML_ROUNDS exhausted — fall through to the streaming pass below.
       }
 
-      const shouldThinkInitial = isThinkingModelId(modelId);
+      // Per-model think override: use stored setting if present, fall back to model-ID pattern.
+      const shouldThinkInitial =
+        typeof modelOptions.think === 'boolean' ? modelOptions.think : isThinkingModelId(modelId);
 
       // Check if user wants to hide thinking content (only show header)
       const hideThinkingContent = vscode.workspace.getConfiguration('ollama').get<boolean>('hideThinkingContent', true);
@@ -854,6 +916,7 @@ export async function handleChatRequest(
               shouldThink: think,
               effectiveClient,
               extensionContext,
+              modelOptions,
             })
         : (think: boolean) =>
             nativeSdkStreamChat({
@@ -861,6 +924,7 @@ export async function handleChatRequest(
               messages: ollamaMessages as Message[],
               shouldThink: think,
               effectiveClient,
+              modelOptions,
             });
 
       try {
@@ -887,9 +951,12 @@ export async function handleChatRequest(
       let thinkingStarted = false;
       let contentStarted = false;
       const xmlFilter = createXmlStreamFilter();
-      // Only parse <think> tags client-side on the cloud/OpenAI-compat path.
-      // Native SDK path gets message.thinking pre-split by Ollama's server-side parser.
-      const thinkingParser = isCloudModel && shouldThink ? new ThinkingParser() : null;
+      // Parse <think> tags on both cloud and local paths.
+      // For local models Ollama normally pre-splits thinking into message.thinking, but
+      // some model/version combinations still emit raw <think> tags in message.content.
+      // Applying the parser unconditionally is safe: if content is already clean the
+      // parser transitions through lookingForOpening → thinkingDone and passes it unchanged.
+      const thinkingParser = shouldThink ? new ThinkingParser() : null;
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -1166,6 +1233,64 @@ export async function activate(context: vscode.ExtensionContext) {
   diagnostics.info(`[client] auto-start log streaming: ${autoStartLogStreaming ? 'enabled' : 'disabled'}`);
   diagnostics.info(`[client] diagnostics log level: ${getConfiguredLogLevel()}`);
 
+  let modelSettingsStore: ModelSettingsStore = {};
+  if (context.globalStorageUri?.fsPath) {
+    modelSettingsStore = await loadModelSettings(context.globalStorageUri, diagnostics);
+  } else {
+    diagnostics.warn('[model-settings] globalStorageUri missing; using in-memory settings only');
+  }
+
+  const getAvailableModelNames = async (): Promise<string[]> => {
+    const names = new Set<string>(Object.keys(modelSettingsStore));
+    try {
+      const [local, running] = await Promise.all([client.list(), client.ps()]);
+      for (const model of local.models ?? []) {
+        if (typeof model?.name === 'string' && model.name.length > 0) {
+          names.add(model.name);
+        }
+      }
+      for (const model of running.models ?? []) {
+        if (typeof model?.name === 'string' && model.name.length > 0) {
+          names.add(model.name);
+        }
+      }
+    } catch (error) {
+      diagnostics.exception('[model-settings] failed to collect model list', error);
+    }
+    return Array.from(names);
+  };
+
+  let saveDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  const modelSettingsViewProvider = createModelSettingsViewProvider({
+    context,
+    initialStore: modelSettingsStore,
+    getAvailableModels: getAvailableModelNames,
+    onStoreChanged: async nextStore => {
+      modelSettingsStore = nextStore;
+      if (context.globalStorageUri?.fsPath) {
+        // Debounce writes: sliders fire many rapid patches; batch into a single save after 500 ms.
+        clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = setTimeout(() => {
+          void saveModelSettings(context.globalStorageUri, modelSettingsStore, diagnostics);
+        }, 500);
+      }
+    },
+    diagnostics,
+  });
+
+  diagnostics.info(`[model-settings] Registering webview view provider with ID: ${MODEL_SETTINGS_VIEW_ID}`);
+  const modelSettingsViewRegistration =
+    typeof vscode.window.registerWebviewViewProvider === 'function'
+      ? vscode.window.registerWebviewViewProvider(MODEL_SETTINGS_VIEW_ID, modelSettingsViewProvider, {
+          webviewOptions: { retainContextWhenHidden: true },
+        })
+      : {
+          dispose: () => {
+            /* noop for tests/mocks */
+          },
+        };
+  diagnostics.info('[model-settings] View provider registered');
+
   const provider = new OllamaChatModelProvider(context, client, diagnostics);
   let lmProviderDisposable: vscode.Disposable | undefined;
   try {
@@ -1212,6 +1337,17 @@ export async function activate(context: vscode.ExtensionContext) {
       provider.refreshModels();
       diagnostics.info('[client] model list refresh triggered');
     }),
+    vscode.commands.registerCommand('opilot.openModelSettings', async () => {
+      modelSettingsViewProvider.updateStore(modelSettingsStore);
+      await modelSettingsViewProvider.open();
+    }),
+    vscode.commands.registerCommand('opilot.openModelSettingsForModel', async (modelId: unknown) => {
+      if (typeof modelId !== 'string' || modelId.length === 0) {
+        return;
+      }
+      modelSettingsViewProvider.updateStore(modelSettingsStore);
+      await modelSettingsViewProvider.open(modelId);
+    }),
     vscode.commands.registerCommand('opilot.dumpPerformanceSnapshot', () => {
       logPerformanceSnapshot(diagnostics, sidebarRegistration?.getProfilingSnapshot?.());
       void vscode.window.showInformationMessage('Performance snapshot written to Opilot logs');
@@ -1225,8 +1361,18 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
     statusBarRegistration,
+    modelSettingsViewRegistration,
     {
       dispose: () => stopLogStreaming(),
+    },
+    {
+      // Flush any pending debounced model-settings save on extension deactivation.
+      dispose: () => {
+        clearTimeout(saveDebounceTimer);
+        if (context.globalStorageUri?.fsPath) {
+          void saveModelSettings(context.globalStorageUri, modelSettingsStore, diagnostics);
+        }
+      },
     },
   ];
 
@@ -1296,7 +1442,7 @@ export async function activate(context: vscode.ExtensionContext) {
     token: vscode.CancellationToken,
   ): Promise<void> => {
     // Pass the Ollama client so the handler streams directly — no VS Code IPC overhead.
-    await handleChatRequest(request, chatContext, stream, token, client, diagnostics, context);
+    await handleChatRequest(request, chatContext, stream, token, client, diagnostics, context, modelSettingsStore);
   };
 
   const participant = setupChatParticipant(context, participantHandler);

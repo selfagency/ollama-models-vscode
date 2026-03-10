@@ -29,21 +29,26 @@ For remote instances that require authentication, also set `ollama.authToken` (v
 
 ## Model Parameters
 
-### `ollama.contextLength`
+### Per-model model settings (webview)
 
-| Type     | Default |
-| -------- | ------- |
-| `number` | `0`     |
+In addition to global settings, Opilot now supports per-model generation controls through **Ollama: Open Model Settings**.
 
-Override the context window size (in tokens) for all models. `0` means use each model's default context length.
+These overrides are persisted as JSON in the extension global storage directory:
 
-Increase this for longer conversations or large file analysis:
+- `<globalStorage>/model-settings.json`
+- Schema: `Record<modelId, Partial<ModelOptions>>`
 
-```json
-"ollama.contextLength": 32768
-```
+Supported per-model fields include:
 
-> **Warning:** Setting this higher than a model supports can cause errors or degrade quality.
+- `temperature`
+- `top_p`
+- `top_k`
+- `num_ctx`
+- `num_predict`
+- `think`
+- `think_budget`
+
+Use the webview for these values rather than editing the file directly.
 
 ## Sidebar Refresh Intervals
 
@@ -54,6 +59,8 @@ Increase this for longer conversations or large file analysis:
 | `number` | `30`    |
 
 How often (in seconds) to auto-refresh the **local models** and **running models** lists. Decrease for faster status updates; increase to reduce API polling.
+
+This interval also drives the status bar heartbeat polling cadence.
 
 ### `ollama.libraryRefreshInterval`
 
@@ -147,7 +154,6 @@ A sensible starting configuration for local development:
 ```json
 {
   "ollama.host": "http://localhost:11434",
-  "ollama.contextLength": 0,
   "ollama.localModelRefreshInterval": 30,
   "ollama.libraryRefreshInterval": 21600,
   "ollama.streamLogs": true,

@@ -21,13 +21,7 @@ import {
   window,
   workspace,
 } from 'vscode';
-import {
-  getCloudOllamaClient,
-  getContextLengthOverride,
-  getOllamaAuthToken,
-  getOllamaClient,
-  getOllamaHost,
-} from './client';
+import { getCloudOllamaClient, getOllamaAuthToken, getOllamaClient, getOllamaHost } from './client';
 import { truncateMessages } from './contextUtils.js';
 import type { DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
@@ -215,7 +209,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
    */
   private getBaseChatModelInfo(modelId: string): LanguageModelChatInformation {
     const providerModelId = this.toProviderModelId(modelId);
-    const contextLength = getContextLengthOverride();
+    const contextLength = 0;
     const nativeToolCalling = false;
     this.nativeToolCallingByModelId.set(modelId, nativeToolCalling);
     this.nativeToolCallingByModelId.set(providerModelId, nativeToolCalling);
@@ -330,13 +324,13 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       const response = await this.client.show({ model: modelId });
       const providerModelId = this.toProviderModelId(modelId);
 
-      // Prefer the model's actual context window; fall back to the user override, then 0.
+      // Prefer the model's actual context window; fall back to the parsed num_ctx parameter, then 0.
       const typedResponse = response as ShowResponse & { modelinfo?: Map<string, unknown> | Record<string, unknown> };
       const modelinfo =
         (typedResponse.model_info as Map<string, unknown> | Record<string, unknown> | undefined) ??
         typedResponse.modelinfo;
       const parameters = typedResponse.parameters;
-      let contextLength = getContextLengthOverride();
+      let contextLength = 0;
       if (!contextLength) {
         // Ollama exposes context_length in model_info using family-specific keys
         // (e.g. llama.context_length, qwen2.context_length, gemma.context_length).
@@ -845,9 +839,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       let contentStarted = false;
       let emittedOutput = false;
       const xmlFilter = createXmlStreamFilter();
-      // Only parse <think> tags client-side on the cloud/OpenAI-compat path.
-      // Native SDK path gets message.thinking pre-split by Ollama's server-side parser.
-      const thinkingParser = isCloudModel && shouldThink ? new ThinkingParser() : null;
+      // Parse <think> tags on both cloud and local paths.
+      // For local models Ollama normally pre-splits thinking into message.thinking, but
+      // some model/version combinations still emit raw <think> tags in message.content.
+      // Applying the parser unconditionally is safe: if content is already clean the
+      // parser transitions through lookingForOpening → thinkingDone and passes it unchanged.
+      const thinkingParser = shouldThink ? new ThinkingParser() : null;
 
       for await (const chunk of response) {
         if (token.isCancellationRequested) {
@@ -869,7 +866,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           }
         }
 
-        // Stream text chunks — run through thinking tag parser if on cloud path
+        // Stream text chunks — run through thinking tag parser on both cloud and local paths
         if (chunk.message?.content) {
           let thinkingChunk = '';
           let contentChunk = chunk.message.content;

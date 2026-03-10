@@ -120,6 +120,12 @@
         "category": "Ollama"
       },
       {
+        "command": "opilot.openModelSettings",
+        "title": "Open Model Settings",
+        "icon": "$(settings-gear)",
+        "category": "Ollama"
+      },
+      {
         "command": "opilot.filterLocalModels",
         "title": "Filter Local Models",
         "icon": "$(filter)",
@@ -332,11 +338,6 @@
           "default": "http://localhost:11434",
           "description": "Ollama server URL (local or remote)"
         },
-        "ollama.contextLength": {
-          "type": "number",
-          "default": 0,
-          "description": "Override context window size (0 = use model default)"
-        },
         "ollama.localModelRefreshInterval": {
           "type": "number",
           "default": 30,
@@ -450,6 +451,16 @@
           "command": "opilot.collapseLocalModels",
           "when": "view == ollama-local-models",
           "group": "navigation@4"
+        },
+        {
+          "command": "opilot.openModelSettings",
+          "when": "view == ollama-local-models",
+          "group": "navigation@5"
+        },
+        {
+          "command": "opilot.openModelSettings",
+          "when": "view == ollama-cloud-models",
+          "group": "navigation@5"
         },
         {
           "command": "opilot.filterLibraryModels",
@@ -616,6 +627,12 @@
           "icon": "$(list-flat)",
           "id": "ollama-library-models",
           "name": "Library"
+        },
+        {
+          "icon": "$(settings-gear)",
+          "id": "ollama-model-settings",
+          "name": "Model Settings",
+          "type": "webview"
         },
         {
           "icon": "$(list-flat)",
