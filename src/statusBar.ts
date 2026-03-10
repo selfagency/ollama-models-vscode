@@ -14,26 +14,56 @@ function getHeartbeatIntervalMs(): number {
 export type StatusBarState = 'checking' | 'online' | 'offline';
 
 /**
+ * Per-model resource usage from ps().
+ */
+export interface RunningModelInfo {
+  name: string;
+  /** Total memory footprint in bytes. */
+  size: number;
+  /** VRAM footprint in bytes (0 = CPU-only). */
+  sizeVram: number;
+}
+
+/**
  * Result of a single Ollama health check.
  */
 export interface HealthCheckResult {
   online: boolean;
-  modelCount: number;
+  /** Number of models currently loaded in memory (from ps()). */
+  runningCount: number;
+  /** Individual running model info. */
+  runningModels: RunningModelInfo[];
   host: string;
   checkedAt: Date;
 }
 
+/** Format bytes as a human-readable string (e.g. "3.2 GB"). */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
+  return `${(bytes / 1_024).toFixed(0)} KB`;
+}
+
 /**
  * Perform a single health check against the Ollama server.
+ * Uses ps() to get running models and their resource usage.
  * Returns structured result rather than throwing so callers don't need try/catch.
  */
 export async function checkOllamaHealth(client: Ollama, host: string): Promise<HealthCheckResult> {
   const checkedAt = new Date();
   try {
-    const { models } = await client.list();
-    return { online: true, modelCount: models.length, host, checkedAt };
+    const { models } = await client.ps();
+    const runningModels: RunningModelInfo[] = models.map(m => {
+      const rec = m as unknown as Record<string, unknown>;
+      return {
+        name: m.name,
+        size: typeof rec.size === 'number' ? rec.size : 0,
+        sizeVram: typeof rec.size_vram === 'number' ? rec.size_vram : 0,
+      };
+    });
+    return { online: true, runningCount: runningModels.length, runningModels, host, checkedAt };
   } catch {
-    return { online: false, modelCount: 0, host, checkedAt };
+    return { online: false, runningCount: 0, runningModels: [], host, checkedAt };
   }
 }
 
@@ -44,12 +74,46 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function buildOnlineTooltip(result: HealthCheckResult): vscode.MarkdownString {
+  const totalSize = result.runningModels.reduce((acc, m) => acc + m.size, 0);
+  const totalVram = result.runningModels.reduce((acc, m) => acc + m.sizeVram, 0);
+
+  const lines: string[] = [`**Ollama** — connected`, ``, `Host: \`${result.host}\``];
+
+  if (result.runningCount === 0) {
+    lines.push(`Running: none`);
+  } else {
+    lines.push(`Running: ${result.runningCount} model${result.runningCount !== 1 ? 's' : ''}`);
+    lines.push(`Memory: ${formatBytes(totalSize)}`);
+
+    if (totalSize > 0) {
+      const gpuPct = Math.round((totalVram / totalSize) * 100);
+      lines.push(`Pressure: ${gpuPct > 0 ? `${gpuPct}% GPU` : 'CPU only'}`);
+    }
+
+    lines.push(``, `| Model | Memory | Processor |`);
+    lines.push(`| --- | --- | --- |`);
+    for (const m of result.runningModels) {
+      const gpuPct = m.size > 0 ? Math.round((m.sizeVram / m.size) * 100) : 0;
+      const processor = m.size > 0 ? (gpuPct > 0 ? `${gpuPct}% GPU` : 'CPU') : '—';
+      lines.push(`| ${m.name} | ${m.size > 0 ? formatBytes(m.size) : '—'} | ${processor} |`);
+    }
+  }
+
+  lines.push(``, `Checked: ${formatTime(result.checkedAt)}`);
+
+  const md = new vscode.MarkdownString(lines.join(`\n`));
+  md.supportHtml = false;
+  return md;
+}
+
 function applyState(item: vscode.StatusBarItem, result: HealthCheckResult): void {
   if (result.online) {
-    item.text = `$(radio-tower) Ollama (${result.modelCount})`;
-    item.tooltip = new vscode.MarkdownString(
-      `**Ollama** — connected\n\nHost: \`${result.host}\`\nModels: ${result.modelCount}\nChecked: ${formatTime(result.checkedAt)}`,
-    );
+    item.text =
+      result.runningCount > 0
+        ? `$(radio-tower) Ollama (${result.runningCount})`
+        : `$(radio-tower) Ollama`;
+    item.tooltip = buildOnlineTooltip(result);
     item.backgroundColor = undefined;
     item.color = undefined;
   } else {
@@ -85,7 +149,7 @@ export function registerStatusBarHeartbeat(
   const runCheck = async () => {
     item.text = `$(loading~spin) Ollama…`;
     const result = await checkOllamaHealth(client, host);
-    diagnostics.debug(`[statusBar] health check: ${result.online ? `online, ${result.modelCount} models` : 'offline'}`);
+    diagnostics.debug(`[statusBar] health check: ${result.online ? `online, ${result.runningCount} running` : 'offline'}`);
 
     if (!result.online) {
       consecutiveFailures++;

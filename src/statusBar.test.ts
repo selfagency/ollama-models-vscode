@@ -61,39 +61,48 @@ const noopLogger = {
   exception: vi.fn(),
 };
 
-function makeClient(models: string[] = ['llama3.2']): Ollama {
+function makeClient(models: Array<{ name: string; size?: number; size_vram?: number }> = [{ name: 'llama3.2', size: 4_000_000_000, size_vram: 4_000_000_000 }]): Ollama {
   return {
-    list: vi.fn().mockResolvedValue({ models: models.map(name => ({ name })) }),
+    ps: vi.fn().mockResolvedValue({ models }),
   } as unknown as Ollama;
 }
 
 describe('checkOllamaHealth', () => {
-  it('returns online=true with model count when list() succeeds', async () => {
-    const client = makeClient(['llama3.2', 'gemma3']);
+  it('returns online=true with running model count when ps() succeeds', async () => {
+    const client = makeClient([
+      { name: 'llama3.2', size: 4_000_000_000, size_vram: 4_000_000_000 },
+      { name: 'gemma3', size: 2_000_000_000, size_vram: 0 },
+    ]);
     const result = await checkOllamaHealth(client, 'http://localhost:11434');
 
     expect(result.online).toBe(true);
-    expect(result.modelCount).toBe(2);
+    expect(result.runningCount).toBe(2);
+    expect(result.runningModels).toHaveLength(2);
+    expect(result.runningModels[0].name).toBe('llama3.2');
+    expect(result.runningModels[0].size).toBe(4_000_000_000);
+    expect(result.runningModels[0].sizeVram).toBe(4_000_000_000);
+    expect(result.runningModels[1].sizeVram).toBe(0);
     expect(result.host).toBe('http://localhost:11434');
     expect(result.checkedAt).toBeInstanceOf(Date);
   });
 
-  it('returns online=false when list() throws', async () => {
+  it('returns online=false when ps() throws', async () => {
     const client = {
-      list: vi.fn().mockRejectedValue(new Error('connection refused')),
+      ps: vi.fn().mockRejectedValue(new Error('connection refused')),
     } as unknown as Ollama;
     const result = await checkOllamaHealth(client, 'http://localhost:11434');
 
     expect(result.online).toBe(false);
-    expect(result.modelCount).toBe(0);
+    expect(result.runningCount).toBe(0);
+    expect(result.runningModels).toHaveLength(0);
   });
 
-  it('returns online=true with zero models when server has no models loaded', async () => {
+  it('returns online=true with zero running models when no models are loaded', async () => {
     const client = makeClient([]);
     const result = await checkOllamaHealth(client, 'http://localhost:11434');
 
     expect(result.online).toBe(true);
-    expect(result.modelCount).toBe(0);
+    expect(result.runningCount).toBe(0);
   });
 });
 
@@ -132,7 +141,10 @@ describe('registerStatusBarHeartbeat', () => {
   });
 
   it('updates to online state after first check succeeds', async () => {
-    const client = makeClient(['llama3.2', 'gemma3']);
+    const client = makeClient([
+      { name: 'llama3.2', size: 4_000_000_000, size_vram: 4_000_000_000 },
+      { name: 'gemma3', size: 2_000_000_000, size_vram: 0 },
+    ]);
     registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
     await flushPromises();
 
@@ -141,21 +153,47 @@ describe('registerStatusBarHeartbeat', () => {
     expect(mockStatusBarItem.backgroundColor).toBeUndefined();
   });
 
-  it('does NOT flip to offline on first failure (debounce)', async () => {
+  it('shows combined memory and GPU/CPU pressure in tooltip', async () => {
+    const client = makeClient([
+      { name: 'llama3.2', size: 4_000_000_000, size_vram: 4_000_000_000 },
+      { name: 'gemma3', size: 2_000_000_000, size_vram: 0 },
+    ]);
+    registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
+    await flushPromises();
+
+    const tooltip = mockStatusBarItem.tooltip as { value: string };
+    expect(tooltip.value).toContain('Memory:');
+    expect(tooltip.value).toContain('GB');
+    // total vram = 4GB, total = 6GB => 66% GPU
+    expect(tooltip.value).toContain('GPU');
+    expect(tooltip.value).toContain('llama3.2');
+    expect(tooltip.value).toContain('gemma3');
+  });
+
+  it('shows "none" in tooltip when server is online but no models running', async () => {
+    const client = makeClient([]);
+    registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
+    await flushPromises();
+
+    expect(mockStatusBarItem.text).toBe('$(radio-tower) Ollama');
+    const tooltip = mockStatusBarItem.tooltip as { value: string };
+    expect(tooltip.value).toContain('none');
+  });
+
+  it('does NOT flip to offline on first single failure (debounce)', async () => {
     const client = {
-      list: vi.fn().mockRejectedValue(new Error('connection refused')),
+      ps: vi.fn().mockRejectedValue(new Error('connection refused')),
     } as unknown as Ollama;
 
     registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
     await flushPromises();
 
-    // Still loading/no warning after just 1 failure
     expect(mockStatusBarItem.text).not.toContain('warning');
   });
 
-  it('shows offline state after DEBOUNCE_FAILURE_COUNT (2) consecutive failures', async () => {
+  it('shows offline state after 2 consecutive failures (debounce threshold)', async () => {
     const client = {
-      list: vi.fn().mockRejectedValue(new Error('connection refused')),
+      ps: vi.fn().mockRejectedValue(new Error('connection refused')),
     } as unknown as Ollama;
 
     registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
@@ -170,14 +208,14 @@ describe('registerStatusBarHeartbeat', () => {
     expect(mockStatusBarItem.text).toContain('offline');
   });
 
-  it('resets to online state after a failure then success', async () => {
-    const list = vi
+  it('resets to online state after consecutive failures then a success', async () => {
+    const ps = vi
       .fn()
       .mockRejectedValueOnce(new Error('connection refused'))
       .mockRejectedValueOnce(new Error('connection refused'))
-      .mockResolvedValue({ models: [{ name: 'llama3.2' }] });
+      .mockResolvedValue({ models: [{ name: 'llama3.2', size: 4_000_000_000, size_vram: 4_000_000_000 }] });
 
-    const client = { list } as unknown as Ollama;
+    const client = { ps } as unknown as Ollama;
     registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
 
     // First two failures
@@ -193,7 +231,7 @@ describe('registerStatusBarHeartbeat', () => {
     expect(mockStatusBarItem.backgroundColor).toBeUndefined();
   });
 
-  it('disposes status bar item and clears interval on dispose()', async () => {
+  it('disposes status bar item and stops polling on dispose()', async () => {
     const client = makeClient();
     const disposable = registerStatusBarHeartbeat(client, 'http://localhost:11434', noopLogger);
     await flushPromises();
@@ -201,10 +239,10 @@ describe('registerStatusBarHeartbeat', () => {
     disposable.dispose();
     expect(mockStatusBarItem.dispose).toHaveBeenCalled();
 
-    // No more list() calls after dispose
-    const callsBefore = (client.list as ReturnType<typeof vi.fn>).mock.calls.length;
+    // No more ps() calls after dispose
+    const callsBefore = (client.ps as ReturnType<typeof vi.fn>).mock.calls.length;
     vi.advanceTimersByTime(60_000);
     await flushPromises();
-    expect((client.list as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+    expect((client.ps as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
   });
 });
