@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-10
+
+## What's Changed
+
+- feat: Add status bar heartbeat showing running model count by @selfagency in https://github.com/selfagency/opilot/pull/52
+- feat: Add model settings persistence helpers by @Copilot in https://github.com/selfagency/opilot/pull/54
+- feat(model-settings): per-model settings webview with thinking support by @selfagency in https://github.com/selfagency/opilot/pull/55
+
+**Full Changelog**: https://github.com/selfagency/opilot/compare/v1.0.0...v1.1.0
+
+_Source: changes from v1.0.0 to v1.1.0._
+
 ## [1.0.0] - 2026-03-09
 
 **Full Changelog**: https://github.com/selfagency/opilot/compare/v0.1.6-pre...v1.0.0
