@@ -2703,22 +2703,10 @@ export function registerSidebar(
       const initialRecommendedOnly = context.globalState.get<boolean>('ollama.libraryRecommendedOnly', false);
       libraryProvider.recommendedOnly = initialRecommendedOnly;
       void commands.executeCommand('setContext', 'ollama.libraryRecommendedOnly', initialRecommendedOnly);
-      // Reconcile: if recommended-only is active on startup, ensure flat (ungrouped) mode.
-      if (initialRecommendedOnly && libraryProvider.grouped) {
-        libraryProvider.grouped = false;
-        void context.globalState.update('ollama.libraryGrouped', false);
-        void commands.executeCommand('setContext', 'ollama.libraryGrouped', false);
-      }
       const toggleRecommended = () => {
         libraryProvider.recommendedOnly = !libraryProvider.recommendedOnly;
         void context.globalState.update('ollama.libraryRecommendedOnly', libraryProvider.recommendedOnly);
         void commands.executeCommand('setContext', 'ollama.libraryRecommendedOnly', libraryProvider.recommendedOnly);
-        // Enabling recommended-only forces flat mode so individual model names are visible.
-        if (libraryProvider.recommendedOnly && libraryProvider.grouped) {
-          libraryProvider.grouped = false;
-          void context.globalState.update('ollama.libraryGrouped', false);
-          void commands.executeCommand('setContext', 'ollama.libraryGrouped', false);
-        }
         libraryProvider.refresh();
       };
       return commands.registerCommand('opilot.toggleLibraryRecommended', toggleRecommended);

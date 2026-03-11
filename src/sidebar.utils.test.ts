@@ -296,43 +296,5 @@ describe('sidebar utility helpers', () => {
       expect(labels).toContain('big-model-70b');
       provider.dispose();
     });
-
-    it('forces grouped=false on startup when both recommendedOnly and grouped are true', async () => {
-      vi.doMock('node:os', () => ({ totalmem: () => 8 * 1024 ** 3 }));
-
-      const { registerSidebar } = await import('./sidebar.js');
-      const vscode = await import('vscode');
-
-      const state: Record<string, unknown> = {
-        'ollama.libraryGrouped': true,
-        'ollama.libraryRecommendedOnly': true,
-      };
-      const globalStateUpdate = vi.fn((key: string, value: unknown) => {
-        state[key] = value;
-      });
-      const mockContext = {
-        subscriptions: { push: vi.fn() },
-        secrets: { get: vi.fn().mockResolvedValue(undefined), store: vi.fn(), delete: vi.fn() },
-        globalState: {
-          get: vi.fn((key: string, def: unknown) => (key in state ? state[key] : def)),
-          update: globalStateUpdate,
-        },
-      } as unknown as import('vscode').ExtensionContext;
-      const mockClient = {
-        list: vi.fn().mockResolvedValue({ models: [] }),
-        generate: vi.fn(),
-      } as unknown as import('ollama').Ollama;
-
-      registerSidebar(mockContext, mockClient);
-
-      // On startup, when recommendedOnly=true is restored alongside grouped=true,
-      // the reconciliation logic must persist grouped=false and update the context.
-      expect(globalStateUpdate).toHaveBeenCalledWith('ollama.libraryGrouped', false);
-      expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
-        'setContext',
-        'ollama.libraryGrouped',
-        false,
-      );
-    });
   });
 });
