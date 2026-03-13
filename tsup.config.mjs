@@ -8,7 +8,7 @@ export default defineConfig({
   format: ['cjs'],
   platform: 'node',
   external: ['vscode'],
-  noExternal: ['ollama'],
+  noExternal: ['ollama', /^@selfagency\/llm-stream-parser/],
   sourcemap: !production,
   minify: production,
   clean: true,
