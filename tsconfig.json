@@ -1,7 +1,8 @@
 {
   "include": ["src/**/*.ts"],
   "compilerOptions": {
-    "module": "Node16",
+    "module": "preserve",
+    "moduleResolution": "Bundler",
     "target": "ES2024",
     "lib": ["ES2024"],
     "sourceMap": true,

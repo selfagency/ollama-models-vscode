@@ -6,16 +6,18 @@ This page gives a detailed overview of the extension architecture and key runtim
 
 ## Module Map
 
-| Module               | Purpose                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| `src/extension.ts`   | Activation entrypoint: registers provider, chat participant, sidebar, log streaming     |
-| `src/provider.ts`    | VS Code Language Model API provider — handles generate/chat, tools, capability tracking |
-| `src/sidebar.ts`     | Sidebar tree views, model lifecycle commands (pull/run/stop/delete)                     |
-| `src/modelfiles.ts`  | Modelfile parsing, Modelfiles tree provider, `ollama create` integration                |
-| `src/completions.ts` | VS Code inline completion provider using a local Ollama model                           |
-| `src/formatting.ts`  | XML-like context tag extraction and filtering from streamed responses                   |
-| `src/diagnostics.ts` | Centralized structured logging to the VS Code output channel                            |
-| `src/client.ts`      | Thin Ollama HTTP client wrapper (auth header injection, error normalization)            |
+| Module                  | Purpose                                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/extension.ts`      | Activation entrypoint: registers provider, chat participant, sidebar, log streaming                                                     |
+| `src/provider.ts`       | VS Code Language Model API provider — handles generate/chat, tools, capability tracking                                                 |
+| `src/sidebar.ts`        | Sidebar tree views, model lifecycle commands (pull/run/stop/delete)                                                                     |
+| `src/modelfiles.ts`     | Modelfile parsing, Modelfiles tree provider, `ollama create` integration                                                                |
+| `src/completions.ts`    | VS Code inline completion provider using a local Ollama model                                                                           |
+| `src/formatting.ts`     | Re-exports stream parsing utilities from [`@selfagency/llm-stream-parser`](https://llmstreamparser.self.agency)                         |
+| `src/thinkingParser.ts` | Re-exports `ThinkingParser` from [`@selfagency/llm-stream-parser`](https://llmstreamparser.self.agency)                                 |
+| `src/toolUtils.ts`      | Re-exports XML tool call utilities from [`@selfagency/llm-stream-parser`](https://llmstreamparser.self.agency); Ollama-specific helpers |
+| `src/diagnostics.ts`    | Centralized structured logging to the VS Code output channel                                                                            |
+| `src/client.ts`         | Thin Ollama HTTP client wrapper (auth header injection, error normalization)                                                            |
 
 ## Activation Flow
 
@@ -63,6 +65,12 @@ VS Code LM API → OllamaLanguageModelProvider.provideLanguageModelResponse()
   → token streaming back to VS Code
 ```
 
+## Stream Parsing
+
+All LLM stream handling — XML context tag extraction, `<think>` block parsing, XML tool call extraction, and response formatting — is provided by [`@selfagency/llm-stream-parser`](https://llmstreamparser.self.agency). The source modules `src/formatting.ts`, `src/thinkingParser.ts`, and `src/toolUtils.ts` are thin re-export shims over the library's subpath exports.
+
+See the [llm-stream-parser API reference](https://llmstreamparser.self.agency/api.html) for full documentation of the parsing primitives.
+
 ## XML Context Tag Handling
 
 VS Code prepends context from open editors, workspace files, and chat participants as XML-like blocks at the start of user messages:
@@ -74,13 +82,15 @@ VS Code prepends context from open editors, workspace files, and chat participan
 
 The extension extracts these **only from leading user messages** (never mid-conversation), deduplicates them by tag type (keeping the most recent), and prepends them as a system message. This prevents user text from being elevated to system-message authority.
 
+This is implemented via `splitLeadingXmlContextBlocks` and `dedupeXmlContextBlocksByTag` from `@selfagency/llm-stream-parser/context`.
+
 See: `src/formatting.ts`, `src/provider.ts:610-686`, `src/extension.ts:293-369`
 
 ## Model Capability Tracking
 
 `provider.ts` maintains a `visionByModelId` map and detects capabilities per model:
 
-- **Thinking models** (`THINKING_MODEL_PATTERN`): models with `think`, `r1`, `kimi`, etc. in their name — responses are stripped of `<think>...</think>` blocks before delivery
+- **Thinking models** (`THINKING_MODEL_PATTERN`): models with `think`, `r1`, `kimi`, etc. in their name — `<think>...</think>` blocks are parsed via `ThinkingParser` from [`@selfagency/llm-stream-parser/thinking`](https://llmstreamparser.self.agency/api.html) and rendered as collapsible blockquotes before delivery
 - **Vision models**: tracked in `visionByModelId`; images are stripped from messages for non-vision models to prevent errors
 - **Tools support**: attempted on first request; if the model responds with a tools-not-supported error, tools are disabled for that model for the session
 

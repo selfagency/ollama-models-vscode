@@ -57,6 +57,13 @@ git add -p
 git commit -m "feat: add my feature"
 ```
 
+## Key Dependencies
+
+| Package                                                                | Purpose                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [`@selfagency/llm-stream-parser`](https://llmstreamparser.self.agency) | LLM stream parsing: thinking blocks, XML tool calls, context tag extraction, response formatting |
+| [`ollama`](https://github.com/ollama/ollama-js)                        | Official Ollama JS SDK                                                                           |
+
 ## Code Style
 
 The project uses [oxlint](https://oxc.rs/docs/guide/usage/linter.html) for linting and [oxfmt](https://github.com/oxc-project/oxfmt) for formatting.

@@ -1,3 +1,4 @@
+import { appendToBlockquote } from '@selfagency/llm-stream-parser/markdown';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -773,7 +774,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     const initialShouldThink = shouldThink;
 
     // Check if user wants to hide thinking content (only show header)
-    const hideThinkingContent = workspace.getConfiguration('ollama').get<boolean>('hideThinkingContent', true);
+    const hideThinkingContent = workspace.getConfiguration('ollama').get<boolean>('hideThinkingContent', false);
 
     try {
       let response: AsyncIterable<ChatResponse>;
@@ -1559,18 +1560,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
  * Regex pattern for models that support extended thinking / reasoning.
  * Used as a fallback when the /api/show capabilities array is not yet cached.
  */
-const THINKING_MODEL_PATTERN = /qwen3|qwq|deepseek-?r1|cogito|phi\d+-reasoning|kimi|thinking/i;
-
-/**
- * Format a text chunk so it renders as a markdown blockquote.
- * `atLineStart` must be `true` for the first chunk (right after the blockquote header).
- * All subsequent chunks should pass `false` — internal newlines are already
- * followed by `> ` so the blockquote continues correctly across chunk boundaries.
- */
-function appendToBlockquote(text: string, atLineStart: boolean): string {
-  if (!text) return '';
-  return (atLineStart ? '> ' : '') + text.replace(/\n/g, '\n> ');
-}
+const THINKING_MODEL_PATTERN = /qwen3|qwq|deepseek-?r1|phi\d+-reasoning|kimi|thinking/i;
 
 export function isThinkingModelId(modelId: string): boolean {
   return THINKING_MODEL_PATTERN.test(modelId);

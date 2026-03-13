@@ -782,7 +782,7 @@ describe('OllamaChatModelProvider chat response', () => {
     const message = {
       role: LanguageModelChatMessageRole.User,
       name: undefined,
-      content: [new LanguageModelTextPart('hello '), new LanguageModelDataPart(Buffer.from('image data'), 'image/png')],
+      content: [new LanguageModelTextPart('hello'), new LanguageModelDataPart(Buffer.from('image data'), 'image/png')],
     };
 
     await provider.provideLanguageModelChatResponse(
@@ -2375,11 +2375,6 @@ describe('isThinkingModelId', () => {
     expect(isThinkingModelId('deepseekr1:latest')).toBe(true);
   });
 
-  it('returns true for cogito models', () => {
-    expect(isThinkingModelId('cogito:8b')).toBe(true);
-    expect(isThinkingModelId('cogito-v1-preview-llama-3.1-8b')).toBe(true);
-  });
-
   it('returns true for phi4-reasoning models', () => {
     expect(isThinkingModelId('phi4-reasoning:latest')).toBe(true);
   });
@@ -2399,6 +2394,8 @@ describe('isThinkingModelId', () => {
     expect(isThinkingModelId('mistral:7b')).toBe(false);
     expect(isThinkingModelId('gemma3:latest')).toBe(false);
     expect(isThinkingModelId('codellama:latest')).toBe(false);
+    expect(isThinkingModelId('cogito:8b')).toBe(false);
+    expect(isThinkingModelId('cogito-v1-preview-llama-3.1-8b')).toBe(false);
   });
 });
 

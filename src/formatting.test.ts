@@ -94,6 +94,18 @@ describe('stripXmlContextTags', () => {
     const result = stripXmlContextTags('<context><todoList>hidden</todoList></context>public');
     expect(result).toBe('public');
   });
+
+  it('strips toolCall tags with JSON content from model output', () => {
+    const result = stripXmlContextTags(
+      'Before.<toolCall> {"name": "semantic_search", "arguments": {"query": "test"}} </toolCall>After.',
+    );
+    expect(result).toBe('Before.After.');
+  });
+
+  it('strips tool_call tags from model output', () => {
+    const result = stripXmlContextTags('<tool_call>{"name": "read_file", "path": "foo.ts"}</tool_call>actual answer');
+    expect(result).toBe('actual answer');
+  });
 });
 
 describe('formatXmlLikeResponseForDisplay', () => {
