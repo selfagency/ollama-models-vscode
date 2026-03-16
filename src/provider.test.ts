@@ -751,6 +751,65 @@ describe('OllamaChatModelProvider chat response', () => {
     expect(userMsg?.images).toHaveLength(1);
   });
 
+  it('does not treat text data parts as images for vision-capable models', async () => {
+    const chat = vi.fn().mockImplementation(async function* () {
+      yield { message: { content: 'ok' }, done: true };
+    });
+
+    vi.mocked(getOllamaClient).mockResolvedValueOnce({ chat, abort: vi.fn() } as unknown as Ollama);
+
+    const provider = new OllamaChatModelProvider(
+      makeContext(),
+      { list: vi.fn(), show: vi.fn() } as unknown as Ollama,
+      makeLogger(),
+    );
+
+    (
+      provider as unknown as {
+        visionByModelId: Map<string, boolean>;
+      }
+    ).visionByModelId.set('vision-model', true);
+
+    const progress = { report: vi.fn() };
+    const token = { isCancellationRequested: false };
+
+    const model = {
+      id: 'vision-model',
+      name: 'Vision',
+      family: '🦙 Ollama',
+      version: '1.0.0',
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      capabilities: { imageInput: true, toolCalling: true },
+    };
+
+    const message = {
+      role: LanguageModelChatMessageRole.User,
+      name: undefined,
+      content: [
+        new LanguageModelTextPart('use this context: '),
+        new LanguageModelDataPart(Buffer.from('{"kind":"note","value":"hello"}'), 'application/json'),
+        new LanguageModelDataPart(Buffer.from('plain text attachment'), 'text/plain'),
+      ],
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      model,
+      [message as unknown as LanguageModelChatRequestMessage],
+      { tools: [], toolMode: 'auto' } as unknown as ProvideLanguageModelChatResponseOptions,
+      progress as unknown as Progress<LanguageModelResponsePart>,
+      token as unknown as CancellationToken,
+    );
+
+    expect(chat).toHaveBeenCalled();
+    const chatArgs = chat.mock.calls[0]?.[0];
+    const userMsg = chatArgs?.messages?.find((m: any) => m.role === 'user');
+    expect(userMsg?.images).toBeUndefined();
+    expect(userMsg?.content).toContain('use this context: ');
+    expect(userMsg?.content).toContain('{"kind":"note","value":"hello"}');
+    expect(userMsg?.content).toContain('plain text attachment');
+  });
+
   it('strips images for non-vision models', async () => {
     const chat = vi.fn().mockImplementation(async function* () {
       yield { message: { content: 'text response' } };

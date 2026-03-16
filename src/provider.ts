@@ -1143,8 +1143,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
    *
    * ## Vision
    *
-   * `LanguageModelDataPart` images are only included when `supportsVision` is
-   * true for the model. Stripped images are counted and logged.
+   * `LanguageModelDataPart` is a generic binary carrier in the VS Code API, so
+   * only `image/*` MIME parts are forwarded via Ollama's `images` field. Text
+   * and JSON data parts are decoded back into inline text content. Unsupported
+   * binary parts are stripped and logged.
    */
   private toOllamaMessages(
     messages: readonly LanguageModelChatRequestMessage[],
@@ -1153,6 +1155,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     const ollamaMessages: Parameters<typeof this.client.chat>[0]['messages'] = [];
     const systemContextParts: string[] = [];
     let strippedImageCount = 0;
+    let strippedBinaryDataCount = 0;
 
     for (const msg of messages) {
       const role = msg.role === LanguageModelChatMessageRole.User ? 'user' : 'assistant';
@@ -1166,11 +1169,20 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         if (part instanceof LanguageModelTextPart) {
           textContent += part.value;
         } else if (part instanceof LanguageModelDataPart) {
-          if (supportsVision) {
-            const base64Data = Buffer.from(part.data).toString('base64');
-            images.push(base64Data);
+          if (this.isImageMimeType(part.mimeType)) {
+            if (supportsVision) {
+              const base64Data = Buffer.from(part.data).toString('base64');
+              images.push(base64Data);
+            } else {
+              strippedImageCount++;
+            }
           } else {
-            strippedImageCount++;
+            const extractedText = this.extractTextFromDataPart(part);
+            if (extractedText) {
+              textContent += extractedText;
+            } else {
+              strippedBinaryDataCount++;
+            }
           }
         } else if (part instanceof LanguageModelToolCallPart) {
           ollamaMsg.tool_calls = ollamaMsg.tool_calls || [];
@@ -1240,7 +1252,44 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       );
     }
 
+    if (strippedBinaryDataCount > 0) {
+      this.outputChannel.debug(
+        `[client] stripped ${strippedBinaryDataCount} non-image binary data part(s) from messages`,
+      );
+    }
+
     return ollamaMessages;
+  }
+
+  private isImageMimeType(mimeType: string | undefined): boolean {
+    return this.normalizeMimeType(mimeType).startsWith('image/');
+  }
+
+  private isTextualMimeType(mimeType: string | undefined): boolean {
+    const normalized = this.normalizeMimeType(mimeType);
+    return (
+      normalized.startsWith('text/') ||
+      normalized === 'application/json' ||
+      normalized.endsWith('+json') ||
+      normalized === 'application/xml' ||
+      normalized.endsWith('+xml')
+    );
+  }
+
+  private normalizeMimeType(mimeType: string | undefined): string {
+    return (mimeType ?? '').split(';', 1)[0]?.trim().toLowerCase();
+  }
+
+  private extractTextFromDataPart(part: LanguageModelDataPart): string {
+    if (!this.isTextualMimeType(part.mimeType)) {
+      return '';
+    }
+
+    try {
+      return new TextDecoder('utf-8').decode(part.data);
+    } catch {
+      return '';
+    }
   }
 
   private extractTextFromUnknownInputPart(part: unknown): string {
@@ -1316,6 +1365,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       index,
       type: ctorName,
       keys: Object.keys(partRecord),
+      mimeType: part instanceof LanguageModelDataPart ? part.mimeType : undefined,
       sample:
         this.extractTextFromUnknownInputPart(part)?.slice(0, 120) ||
         (part instanceof LanguageModelTextPart ? part.value.slice(0, 120) : ''),
