@@ -1083,6 +1083,10 @@ export async function handleChatRequest(
       const pendingToolCalls: vscode.LanguageModelToolCallPart[] = [];
       const assistantTextParts: vscode.LanguageModelTextPart[] = [];
       for await (const chunk of response.stream) {
+        if (token.isCancellationRequested) {
+          break;
+        }
+
         if (chunk instanceof vscode.LanguageModelTextPart) {
           assistantTextParts.push(chunk);
           // Stream textual output immediately so users see incremental tokens

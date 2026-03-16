@@ -1903,6 +1903,47 @@ describe('handleChatRequest model selection', () => {
     expect(mockMarkdown).toHaveBeenCalledWith('second chunk');
   });
 
+  it('stops consuming LM API stream chunks when cancellation is requested', async () => {
+    const LMTextPart = class {
+      constructor(public value: string) {}
+    };
+
+    const mockToken = { isCancellationRequested: false };
+
+    const mockSendRequest = vi.fn().mockResolvedValue({
+      stream: (async function* () {
+        yield new LMTextPart('first chunk');
+        mockToken.isCancellationRequested = true;
+        yield new LMTextPart('second chunk should not render');
+      })(),
+    });
+
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: LMTextPart,
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: string) => ({ content }),
+        Assistant: (content: string) => ({ content }),
+      },
+      lm: { selectChatModels: vi.fn().mockResolvedValue([]), tools: [] },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+    }));
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const mockRequest = {
+      prompt: 'test',
+      model: { vendor: 'selfagency-opilot', sendRequest: mockSendRequest },
+    };
+
+    await ext.handleChatRequest(mockRequest as any, { history: [] } as any, { markdown: mockMarkdown } as any, mockToken as any);
+
+    expect(mockMarkdown).toHaveBeenCalledWith('first chunk');
+    expect(mockMarkdown).not.toHaveBeenCalledWith('second chunk should not render');
+  });
+
   it('invokes tools and feeds results back when toolInvocationToken is present', async () => {
     vi.resetModules();
 

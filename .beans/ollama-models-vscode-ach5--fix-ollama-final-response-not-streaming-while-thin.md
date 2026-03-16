@@ -1,11 +1,11 @@
 ---
 # ollama-models-vscode-ach5
 title: Fix Ollama final response not streaming while thinking streams
-status: completed
+status: in-progress
 type: bug
 priority: high
 created_at: 2026-03-16T22:03:11Z
-updated_at: 2026-03-16T22:05:45Z
+updated_at: 2026-03-16T22:12:37Z
 ---
 
 ## Context
