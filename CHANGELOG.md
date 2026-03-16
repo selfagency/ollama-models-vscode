@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-03-16
+
+## What's Changed
+
+- fix(chat): stream LM fallback response chunks incrementally by @selfagency in https://github.com/selfagency/opilot/pull/72
+- feat(config): introduce opilot._ settings with legacy ollama._ migration by @selfagency in https://github.com/selfagency/opilot/pull/73
+
+**Full Changelog**: https://github.com/selfagency/opilot/compare/v1.3.1...v1.3.2
+
+_Source: changes from v1.3.1 to v1.3.2._
+
 ## [1.3.1] - 2026-03-16
 
 ## What's Changed
