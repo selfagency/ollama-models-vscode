@@ -47,7 +47,7 @@
     "test:integration": "task integration-tests"
   },
   "dependencies": {
-    "@selfagency/llm-stream-parser": "^0.1.4",
+    "@selfagency/llm-stream-parser": "^0.1.5",
     "ollama": "^0.6.3"
   },
   "devDependencies": {
