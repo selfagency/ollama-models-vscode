@@ -2615,7 +2615,9 @@ describe('XML context extraction in message conversion', () => {
     // BASE_SYSTEM_PROMPT is always injected (no context blocks since tag is non-leading)
     expect(messages?.[0]?.role).toBe('system');
     expect(messages?.[0]?.content).toBe(
-      'You are a helpful coding assistant. Answer the user’s questions directly and concisely. Do not mention GitHub Copilot, VS Code, or that you are integrated with an IDE or development tool unless explicitly asked.',
+      'You are a helpful coding assistant. Answer the user’s questions directly and concisely. ' +
+        'Do not mention GitHub Copilot, VS Code, or that you are integrated with an IDE or development tool unless explicitly asked. ' +
+        'Avoid repetitive filler phrases like "I will continue with" or "Let me proceed" — just provide the actual content or code.',
     );
     // The user message content should be unchanged (including the tag)
     expect(messages?.[1]?.role).toBe('user');
