@@ -1401,6 +1401,9 @@ export async function activate(context: vscode.ExtensionContext) {
       provider.refreshModels();
       diagnostics.info('[client] model list refresh triggered');
     }),
+    vscode.commands.registerCommand('opilot.openExtensionSettings', async () => {
+      await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:selfagency.opilot');
+    }),
     vscode.commands.registerCommand('opilot.openModelSettings', async () => {
       modelSettingsViewProvider.updateStore(modelSettingsStore);
       await modelSettingsViewProvider.open();

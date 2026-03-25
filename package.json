@@ -109,9 +109,14 @@
         "category": "Ollama"
       },
       {
+        "command": "opilot.openExtensionSettings",
+        "title": "Open Extension Settings",
+        "icon": "$(settings-gear)",
+        "category": "Ollama"
+      },
+      {
         "command": "opilot.openModelSettings",
         "title": "Open Model Settings",
-        "icon": "$(settings-gear)",
         "category": "Ollama"
       },
       {
@@ -593,19 +598,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "opilot.openModelSettings",
-          "when": "view == ollama-local-models",
-          "group": "navigation@4"
-        },
-        {
           "command": "opilot.collapseLocalModels",
           "when": "view == ollama-local-models",
           "group": "navigation@5"
         },
         {
-          "command": "opilot.openModelSettingsForModel",
-          "when": "view == ollama-local-models && ollama.localModel =~ /;hasPencil$/",
-          "group": "inline@1"
+          "command": "opilot.openExtensionSettings",
+          "when": "view == ollama-local-models",
+          "group": "navigation@6"
         },
         {
           "command": "opilot.toggleLibraryRecommended",
@@ -720,29 +720,29 @@
       ],
       "view/item/context": [
         {
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-local-models && viewItem == local-stopped",
+          "group": "inline@1"
+        },
+        {
+          "command": "opilot.startModel",
+          "when": "view == ollama-local-models && viewItem == local-stopped",
+          "group": "inline@2"
+        },
+        {
           "command": "opilot.deleteModel",
           "when": "view == ollama-local-models && viewItem == local-stopped",
           "group": "inline@3"
         },
         {
-          "command": "opilot.stopModel",
+          "command": "opilot.openModelSettingsForModel",
           "when": "view == ollama-local-models && viewItem == local-running",
-          "group": "inline@2"
-        },
-        {
-          "command": "opilot.openModelSettingsForModel",
-          "when": "view == ollama-local-models && viewItem == local-stopped;hasPencil",
-          "group": "inline@2"
-        },
-        {
-          "command": "opilot.openModelSettingsForModel",
-          "when": "view == ollama-local-models && viewItem == local-running;hasPencil",
-          "group": "inline@2"
+          "group": "inline@1"
         },
         {
           "command": "opilot.stopModel",
           "when": "view == ollama-local-models && viewItem == local-running",
-          "group": "inline@3"
+          "group": "inline@2"
         },
         {
           "command": "opilot.pullModelFromLibrary",
@@ -766,12 +766,7 @@
         },
         {
           "command": "opilot.openModelSettingsForModel",
-          "when": "view == ollama-cloud-models && viewItem == cloud-stopped;hasPencil",
-          "group": "inline@2"
-        },
-        {
-          "command": "opilot.openModelSettingsForModel",
-          "when": "view == ollama-cloud-models && viewItem == cloud-running;hasPencil",
+          "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
           "group": "inline@2"
         },
         {
@@ -782,7 +777,7 @@
         {
           "command": "opilot.deleteModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
-          "group": "inline@3"
+          "group": "inline@4"
         },
         {
           "command": "opilot.openCloudModel",
@@ -790,9 +785,14 @@
           "group": "inline@1"
         },
         {
-          "command": "opilot.stopCloudModel",
+          "command": "opilot.openModelSettingsForModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-running",
           "group": "inline@2"
+        },
+        {
+          "command": "opilot.stopCloudModel",
+          "when": "view == ollama-cloud-models && viewItem == cloud-running",
+          "group": "inline@3"
         },
         {
           "command": "opilot.editModelfile",

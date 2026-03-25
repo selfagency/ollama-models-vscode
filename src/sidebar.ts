@@ -125,18 +125,6 @@ export class ModelTreeItem extends TreeItem {
       this.iconPath = createThemeIcon('check');
     }
 
-    // Add pencil icon for model settings on local and cloud models
-    if (type === 'local-running' || type === 'local-stopped' || type === 'cloud-running' || type === 'cloud-stopped') {
-      (this as any).actions = [
-        {
-          commandId: 'opilot.openModelSettingsForModel',
-          tooltip: 'Open Model Settings',
-          iconPath: createThemeIcon('edit'),
-        },
-      ];
-      this.contextValue = type + ';hasPencil';
-    }
-
     if (type === 'local-stopped' || type === 'cloud-stopped') {
       this.description = this.formatSize(size);
     } else if (type === 'local-running' || type === 'cloud-running') {
