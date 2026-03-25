@@ -13,6 +13,8 @@ export const SUPPORTED_SETTING_KEYS = [
   'completionModel',
   'enableInlineCompletions',
   'hideThinkingContent',
+  'repetitionDetection',
+  'maxContextTokens',
 ] as const;
 
 type SupportedSettingKey = (typeof SUPPORTED_SETTING_KEYS)[number];

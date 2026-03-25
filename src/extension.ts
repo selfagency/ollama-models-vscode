@@ -6,7 +6,7 @@ import type { ChatResponse, Message, Ollama, Options, Tool } from 'ollama';
 import * as vscode from 'vscode';
 import { getCloudOllamaClient, getOllamaAuthToken, getOllamaClient, getOllamaHost, testConnection } from './client.js';
 import { OllamaInlineCompletionProvider } from './completions.js';
-import { truncateMessages } from './contextUtils.js';
+import { BASE_SYSTEM_PROMPT, detectsRepetition, resolveContextLimit, truncateMessages } from './contextUtils.js';
 import { createDiagnosticsLogger, getConfiguredLogLevel, type DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
 import {
@@ -17,18 +17,18 @@ import {
 } from './formatting';
 import { registerModelfileManager } from './modelfiles.js';
 import {
+  getModelOptionsForModel,
   loadModelSettings,
   saveModelSettings,
-  getModelOptionsForModel,
   type ModelOptionOverrides,
   type ModelSettingsStore,
 } from './modelSettings.js';
 import { chatCompletionsOnce, initiateChatCompletionsStream } from './openaiCompat.js';
 import { ollamaMessagesToOpenAICompat, ollamaToolsToOpenAICompat } from './openaiCompatMapping.js';
 import { isThinkingModelId, OllamaChatModelProvider } from './provider.js';
+import { affectsSetting, getSetting, migrateLegacySettings, SETTINGS_NAMESPACE } from './settings.js';
 import { createModelSettingsViewProvider, MODEL_SETTINGS_VIEW_ID } from './settingsWebview.js';
 import { registerSidebar, type SidebarProfilingSnapshot } from './sidebar.js';
-import { affectsSetting, getSetting, migrateLegacySettings, SETTINGS_NAMESPACE } from './settings.js';
 import { registerStatusBarHeartbeat } from './statusBar.js';
 import { ThinkingParser } from './thinkingParser.js';
 import {
@@ -40,6 +40,7 @@ import {
 
 const LANGUAGE_MODEL_VENDOR = 'selfagency-opilot';
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:';
+
 /** VS Code Autopilot signals task completion by having the model call this tool. */
 const TASK_COMPLETE_TOOL_NAME = 'task_complete';
 let builtInOllamaConflictPromptInProgress = false;
@@ -675,12 +676,22 @@ export async function handleChatRequest(
       const dedupedContextParts = dedupeXmlContextBlocksByTag(systemContextParts);
 
       if (dedupedContextParts.length > 0) {
-        ollamaMessages.unshift({ role: 'system', content: dedupedContextParts.join('\n\n') });
+        ollamaMessages.unshift({
+          role: 'system',
+          content: BASE_SYSTEM_PROMPT + '\n\n' + dedupedContextParts.join('\n\n'),
+        });
+      } else {
+        ollamaMessages.unshift({ role: 'system', content: BASE_SYSTEM_PROMPT });
       }
 
       // Truncate messages to fit within the model's context window.
       // VS Code injects 100K+ token prompts; small models cannot handle this.
-      const maxInputTokens = request.model.maxInputTokens ?? 0;
+      // resolveContextLimit applies a fallback of 8 192 tokens when no model limit is reported.
+      const maxInputTokens = resolveContextLimit(
+        request.model.maxInputTokens ?? 0,
+        modelOptions.num_ctx,
+        getSetting<number>('maxContextTokens', 0),
+      );
       if (maxInputTokens > 0) {
         const truncated = truncateMessages(ollamaMessages as Message[], maxInputTokens);
         ollamaMessages.splice(0, ollamaMessages.length, ...truncated);
@@ -951,6 +962,13 @@ export async function handleChatRequest(
 
       let thinkingStarted = false;
       let contentStarted = false;
+      let emittedContent = false;
+      let responseBuffer = '';
+      const rawRepSensitivity = getSetting<string>('repetitionDetection', 'conservative');
+      const repSensitivity: 'off' | 'conservative' | 'moderate' =
+        rawRepSensitivity === 'off' || rawRepSensitivity === 'conservative' || rawRepSensitivity === 'moderate'
+          ? rawRepSensitivity
+          : 'conservative';
       const xmlFilter = createXmlStreamFilter();
       // Parse <think> tags on both cloud and local paths.
       // For local models Ollama normally pre-splits thinking into message.thinking, but
@@ -968,6 +986,7 @@ export async function handleChatRequest(
           if (!thinkingStarted) {
             stream.markdown('\n\n*Thinking*\n\n');
             thinkingStarted = true;
+            emittedContent = true;
           }
           if (!hideThinkingContent) {
             stream.markdown(chunk.message.thinking);
@@ -986,6 +1005,7 @@ export async function handleChatRequest(
             if (!thinkingStarted) {
               stream.markdown('\n\n*Thinking*\n\n');
               thinkingStarted = true;
+              emittedContent = true;
             }
             if (!hideThinkingContent) {
               stream.markdown(thinkingChunk);
@@ -1002,6 +1022,14 @@ export async function handleChatRequest(
             const cleanContent = xmlFilter.write(contentChunk);
             if (cleanContent) {
               stream.markdown(cleanContent);
+              emittedContent = true;
+              // Append to rolling buffer (bounded to 600 chars) for repetition detection.
+              responseBuffer = (responseBuffer + cleanContent).slice(-600);
+              if (detectsRepetition(responseBuffer, repSensitivity)) {
+                outputChannel?.warn(`[client] repetition detected in @ollama response; stopping stream`);
+                stream.markdown('\n\n*\\[Stopped: repetition detected\\]*');
+                break;
+              }
             }
           }
         }
@@ -1011,6 +1039,7 @@ export async function handleChatRequest(
             stream.markdown(
               `\n\`\`\`json\n${JSON.stringify({ tool: toolCall.function.name, arguments: toolCall.function.arguments }, null, 2)}\n\`\`\`\n`,
             );
+            emittedContent = true;
           }
         }
 
@@ -1023,6 +1052,34 @@ export async function handleChatRequest(
       const finalContent = xmlFilter.end();
       if (finalContent) {
         stream.markdown(finalContent);
+        emittedContent = true;
+      }
+
+      // Some model/server combinations return a successful stream that emits
+      // no visible content or tool calls. Recover by retrying once without streaming.
+      if (!emittedContent && !token.isCancellationRequested) {
+        outputChannel?.warn(`[client] @ollama stream returned no output for ${modelId}; retrying with stream=false`);
+        const fallback = await (isCloudModel
+          ? openAiCompatChatOnce({
+              modelId,
+              messages: ollamaMessages as Message[],
+              shouldThink,
+              effectiveClient,
+              extensionContext,
+              modelOptions,
+            })
+          : nativeSdkChatOnce({
+              modelId,
+              messages: ollamaMessages as Message[],
+              shouldThink,
+              effectiveClient,
+              modelOptions,
+            }));
+        if (fallback.message?.content) {
+          stream.markdown(sanitizeNonStreamingModelOutput(fallback.message.content));
+        } else {
+          stream.markdown('*No response from model. Try rephrasing or switching to a different model.*');
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

@@ -1,13 +1,17 @@
 ---
-# ollama-models-vscode-qmvj
+id: ollama-models-vscode-qmvj
 title: Fix false image attachment sent to non-vision chat models
 status: completed
 type: bug
-priority: high
+---
+
+ty: high
 branch: fix/qmvj-false-image-attachment
 pr: 70
 created_at: 2026-03-16T19:01:45Z
 updated_at: 2026-03-16T19:15:58Z
+id: ollama-models-vscode-qmvj
+
 ---
 
 Investigate why chat requests to text-only models like qwen3.5:4b can include image inputs and trigger Ollama errors such as `image: unknown format` even when the user did not intentionally send an image. Add coverage and fix the request mapping so only valid image content is forwarded.

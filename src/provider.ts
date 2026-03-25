@@ -23,7 +23,7 @@ import {
   workspace,
 } from 'vscode';
 import { getCloudOllamaClient, getOllamaAuthToken, getOllamaClient, getOllamaHost } from './client';
-import { truncateMessages } from './contextUtils.js';
+import { BASE_SYSTEM_PROMPT, detectsRepetition, resolveContextLimit, truncateMessages } from './contextUtils.js';
 import type { DiagnosticsLogger } from './diagnostics.js';
 import { reportError } from './errorHandler.js';
 import {
@@ -737,7 +737,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     this.outputChannel.info(
       `[context] before truncation: ${effectiveMessages.length} messages, ${JSON.stringify(effectiveMessages, null, 2).length} chars, model.maxInputTokens=${model.maxInputTokens}`,
     );
-    const ollamaMessages = truncateMessages(effectiveMessages, model.maxInputTokens);
+    const maxInputTokens = resolveContextLimit(
+      model.maxInputTokens ?? 0,
+      undefined,
+      getSetting<number>('maxContextTokens', 0),
+    );
+    const ollamaMessages = truncateMessages(effectiveMessages, maxInputTokens);
     this.outputChannel.info(
       `[context] after truncation: ${ollamaMessages.length} messages, ${JSON.stringify(ollamaMessages, null, 2).length} chars`,
     );
@@ -841,6 +846,8 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       let thinkingLineStart = true;
       let contentStarted = false;
       let emittedOutput = false;
+      let responseBuffer = '';
+      const repSensitivity = getSetting<'off' | 'conservative' | 'moderate'>('repetitionDetection', 'conservative');
       const xmlFilter = createXmlStreamFilter();
       // Parse <think> tags on both cloud and local paths.
       // For local models Ollama normally pre-splits thinking into message.thinking, but
@@ -907,6 +914,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             if (cleanContent) {
               progress.report(new LanguageModelTextPart(cleanContent));
               emittedOutput = true;
+              responseBuffer = (responseBuffer + cleanContent).slice(-600);
+              if (detectsRepetition(responseBuffer, repSensitivity)) {
+                this.outputChannel.warn(`[client] repetition detected for ${runtimeModelId}; stopping stream`);
+                progress.report(new LanguageModelTextPart('\n\n*[Stopped: repetition detected]*'));
+                break;
+              }
             }
           }
         }
@@ -1243,7 +1256,12 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
     if (dedupedContextParts.length > 0) {
       ollamaMessages.unshift({
         role: 'system',
-        content: dedupedContextParts.join('\n\n'),
+        content: BASE_SYSTEM_PROMPT + '\n\n' + dedupedContextParts.join('\n\n'),
+      } as never);
+    } else {
+      ollamaMessages.unshift({
+        role: 'system',
+        content: BASE_SYSTEM_PROMPT,
       } as never);
     }
 

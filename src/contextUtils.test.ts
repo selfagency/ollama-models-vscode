@@ -1,8 +1,14 @@
 // src/contextUtils.test.ts
 
-import { describe, expect, it } from 'vitest';
 import type { Message } from 'ollama';
-import { truncateMessages, estimateMessagesTokens } from './contextUtils.js';
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_CONTEXT_TOKENS,
+  detectsRepetition,
+  estimateMessagesTokens,
+  resolveContextLimit,
+  truncateMessages,
+} from './contextUtils.js';
 
 function makeMsg(role: Message['role'], chars: number): Message {
   return { role, content: 'x'.repeat(chars) };
@@ -103,5 +109,67 @@ describe('truncateMessages', () => {
     expect(result.some(m => m === recent)).toBe(true);
     expect(result.some(m => m === old)).toBe(false);
     expect(result[result.length - 1]).toEqual(current);
+  });
+});
+
+describe('detectsRepetition', () => {
+  it('returns false when sensitivity is off regardless of content', () => {
+    const repeated = 'hello world '.repeat(20);
+    expect(detectsRepetition(repeated, 'off')).toBe(false);
+  });
+
+  it('returns false for empty buffer', () => {
+    expect(detectsRepetition('', 'conservative')).toBe(false);
+    expect(detectsRepetition('', 'moderate')).toBe(false);
+  });
+
+  it('detects 3× repeated phrase (≥20 chars) in conservative mode', () => {
+    const phrase = 'This is a repeated phrase here.'; // 31 chars > 20
+    const buffer = phrase + phrase + phrase;
+    expect(detectsRepetition(buffer, 'conservative')).toBe(true);
+  });
+
+  it('does not trigger conservative mode when pattern is < 20 chars with no longer repetition', () => {
+    // Each section is different, so no 20+ char substring repeats 3× consecutively
+    const buffer =
+      'First paragraph with unique content here. --- ' +
+      'Second paragraph differs from the first one. --- ' +
+      'Third paragraph is also distinct from others above.';
+    expect(detectsRepetition(buffer, 'conservative')).toBe(false);
+  });
+
+  it('detects 3× repeated phrase (≥10 chars) in moderate mode', () => {
+    const phrase = 'short rep!'; // 10 chars == minPhraseLen for moderate
+    const buffer = phrase + phrase + phrase;
+    expect(detectsRepetition(buffer, 'moderate')).toBe(true);
+  });
+
+  it('returns false for normal non-repeating content', () => {
+    const buffer =
+      'Here is some normal text that does not repeat itself in any meaningful way. ' +
+      'It continues here with different words and sentences.';
+    expect(detectsRepetition(buffer, 'conservative')).toBe(false);
+    expect(detectsRepetition(buffer, 'moderate')).toBe(false);
+  });
+});
+
+describe('resolveContextLimit', () => {
+  it('returns modelReported when > 0', () => {
+    expect(resolveContextLimit(4096)).toBe(4096);
+    expect(resolveContextLimit(4096, 2048, 16384)).toBe(4096);
+  });
+
+  it('returns modelOptNumCtx when modelReported is 0', () => {
+    expect(resolveContextLimit(0, 2048)).toBe(2048);
+    expect(resolveContextLimit(0, 2048, 16384)).toBe(2048);
+  });
+
+  it('returns settingMax when modelReported and modelOptNumCtx are 0', () => {
+    expect(resolveContextLimit(0, 0, 16384)).toBe(16384);
+  });
+
+  it('returns DEFAULT_CONTEXT_TOKENS when all inputs are 0 or absent', () => {
+    expect(resolveContextLimit(0, 0, 0)).toBe(DEFAULT_CONTEXT_TOKENS);
+    expect(resolveContextLimit(0)).toBe(DEFAULT_CONTEXT_TOKENS);
   });
 });

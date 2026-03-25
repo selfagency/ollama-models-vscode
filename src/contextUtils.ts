@@ -2,6 +2,15 @@
 
 import type { Message } from 'ollama';
 
+/**
+ * Base system prompt injected into every @ollama and LM API request.
+ * Prevents models from announcing their Copilot integration unprompted and discourages repetitive filler phrases.
+ */
+export const BASE_SYSTEM_PROMPT =
+  'You are a helpful coding assistant. Answer the user’s questions directly and concisely. ' +
+  'Do not mention GitHub Copilot, VS Code, or that you are integrated with an IDE or development tool unless explicitly asked. ' +
+  'Avoid repetitive filler phrases like "I will continue with" or "Let me proceed" — just provide the actual content or code.';
+
 /** Rough token estimate: 4 chars ≈ 1 token. */
 export const CHARS_PER_TOKEN = 4;
 
@@ -89,4 +98,52 @@ export function truncateMessages(messages: Message[], maxInputTokens: number): M
   }
 
   return [...effectiveSystemMsgs, ...keptHistory, ...lastMsg];
+}
+
+/**
+ * Detect whether streaming output has entered a repetition loop.
+ *
+ * @param buffer       Accumulated recent output (caller should keep last ~600 chars).
+ * @param sensitivity  How aggressively to detect repetition.
+ * @returns true when a repeated pattern is found and the stream should be stopped.
+ */
+export function detectsRepetition(buffer: string, sensitivity: 'off' | 'conservative' | 'moderate'): boolean {
+  if (sensitivity === 'off' || buffer.length === 0) return false;
+
+  const windowSize = sensitivity === 'conservative' ? 500 : 400;
+  const minPhraseLen = sensitivity === 'conservative' ? 20 : 10;
+  const text = buffer.slice(-windowSize);
+
+  // For each suffix length from minPhraseLen up to 1/3 of the window,
+  // check if the last three occurrences of that suffix are consecutive
+  // (i.e. the text ends with phrase+phrase+phrase).
+  const maxPhraseLen = Math.floor(text.length / 3);
+  for (let len = minPhraseLen; len <= maxPhraseLen; len++) {
+    const phrase = text.slice(-len);
+    const twice = text.slice(-(len * 2), -len);
+    const thrice = text.slice(-(len * 3), -(len * 2));
+    if (twice === phrase && thrice === phrase) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Default context window cap when the model does not report one. */
+export const DEFAULT_CONTEXT_TOKENS = 8192;
+
+/**
+ * Resolve the effective context-window token limit for message truncation.
+ *
+ * Priority:
+ * 1. Model-reported maxInputTokens (from Ollama /api/show metadata)
+ * 2. Per-model num_ctx override from model settings
+ * 3. User-configured opilot.maxContextTokens setting
+ * 4. Built-in default of 8 192 tokens
+ */
+export function resolveContextLimit(modelReported: number, modelOptNumCtx?: number, settingMax?: number): number {
+  if (modelReported > 0) return modelReported;
+  if (modelOptNumCtx && modelOptNumCtx > 0) return modelOptNumCtx;
+  if (settingMax && settingMax > 0) return settingMax;
+  return DEFAULT_CONTEXT_TOKENS;
 }

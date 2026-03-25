@@ -1938,7 +1938,12 @@ describe('handleChatRequest model selection', () => {
       model: { vendor: 'selfagency-opilot', sendRequest: mockSendRequest },
     };
 
-    await ext.handleChatRequest(mockRequest as any, { history: [] } as any, { markdown: mockMarkdown } as any, mockToken as any);
+    await ext.handleChatRequest(
+      mockRequest as any,
+      { history: [] } as any,
+      { markdown: mockMarkdown } as any,
+      mockToken as any,
+    );
 
     expect(mockMarkdown).toHaveBeenCalledWith('first chunk');
     expect(mockMarkdown).not.toHaveBeenCalledWith('second chunk should not render');
@@ -3084,5 +3089,258 @@ describe('handleConnectionTestFailure Open Logs path', () => {
     if (platformDesc) {
       Object.defineProperty(process, 'platform', platformDesc);
     }
+  });
+});
+
+describe('handleChatRequest cloud model path (openAiCompatStreamChat)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  function makeStandardMocks() {
+    vi.doMock('./diagnostics.js', () => ({
+      createDiagnosticsLogger: () => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        exception: vi.fn(),
+      }),
+      getConfiguredLogLevel: vi.fn(() => 'info'),
+    }));
+    vi.doMock('./provider.js', () => ({
+      OllamaChatModelProvider: class {
+        setAuthToken = vi.fn();
+        prefetchModels = vi.fn();
+      },
+      isThinkingModelId: () => false,
+    }));
+    vi.doMock('./sidebar.js', () => ({ registerSidebar: vi.fn() }));
+    vi.doMock('./modelfiles.js', () => ({ registerModelfileManager: vi.fn() }));
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      LanguageModelChatMessageRole: { User: 1, Assistant: 2 },
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: string) => ({ role: 1, content }),
+        Assistant: (content: string) => ({ role: 2, content }),
+      },
+      lm: { selectChatModels: vi.fn().mockResolvedValue([]) },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+    }));
+  }
+
+  it('streams response for a cloud model via openAiCompatStreamChat', async () => {
+    const cloudClient = {
+      chat: vi.fn(),
+      generate: vi.fn(),
+    };
+
+    const sseChunks = [
+      { choices: [{ delta: { content: 'Hello ' }, finish_reason: null }] },
+      { choices: [{ delta: { content: 'world!' }, finish_reason: 'stop' }] },
+    ];
+
+    vi.doMock('./client.js', () => ({
+      getOllamaClient: vi.fn(),
+      testConnection: vi.fn(),
+      getOllamaHost: vi.fn(() => 'http://localhost:11434'),
+      getOllamaAuthToken: vi.fn().mockResolvedValue(undefined),
+      getCloudOllamaClient: vi.fn().mockResolvedValue(cloudClient),
+    }));
+
+    vi.doMock('./openaiCompat.js', () => ({
+      initiateChatCompletionsStream: vi.fn().mockResolvedValue(
+        (async function* () {
+          for (const chunk of sseChunks) yield chunk;
+        })(),
+      ),
+      chatCompletionsOnce: vi.fn(),
+    }));
+
+    vi.doMock('./openaiCompatMapping.js', () => ({
+      ollamaMessagesToOpenAICompat: vi.fn((msgs: any[]) => msgs),
+      ollamaToolsToOpenAICompat: vi.fn(() => undefined),
+    }));
+
+    makeStandardMocks();
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const stream = { markdown: mockMarkdown };
+    const token = { isCancellationRequested: false };
+    const mockClient = { chat: vi.fn(), generate: vi.fn() };
+
+    const request = {
+      prompt: 'hello',
+      model: { vendor: 'selfagency-opilot', id: 'llama3.3:cloud' },
+    };
+
+    await ext.handleChatRequest(
+      request as any,
+      { history: [] } as any,
+      stream as any,
+      token as any,
+      mockClient as any,
+      undefined,
+    );
+
+    const allCalls = mockMarkdown.mock.calls.map((c: any[]) => c[0] as string);
+    const joined = allCalls.join('');
+    expect(joined).toContain('Hello ');
+    expect(joined).toContain('world!');
+  });
+
+  it('falls back to native SDK when openAiCompatStreamChat throws', async () => {
+    const cloudClient = {
+      chat: vi.fn().mockResolvedValue(
+        (async function* () {
+          yield { message: { content: 'fallback response' }, done: true };
+        })(),
+      ),
+      generate: vi.fn(),
+    };
+
+    vi.doMock('./client.js', () => ({
+      getOllamaClient: vi.fn(),
+      testConnection: vi.fn(),
+      getOllamaHost: vi.fn(() => 'http://localhost:11434'),
+      getOllamaAuthToken: vi.fn().mockResolvedValue(undefined),
+      getCloudOllamaClient: vi.fn().mockResolvedValue(cloudClient),
+    }));
+
+    vi.doMock('./openaiCompat.js', () => ({
+      initiateChatCompletionsStream: vi.fn().mockRejectedValue(new Error('connection refused')),
+      chatCompletionsOnce: vi.fn(),
+    }));
+
+    vi.doMock('./openaiCompatMapping.js', () => ({
+      ollamaMessagesToOpenAICompat: vi.fn((msgs: any[]) => msgs),
+      ollamaToolsToOpenAICompat: vi.fn(() => undefined),
+    }));
+
+    makeStandardMocks();
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const stream = { markdown: mockMarkdown };
+    const token = { isCancellationRequested: false };
+    // Pass cloudClient as the 5th arg so it's used as effectiveClient when no extensionContext
+    const mockClient = cloudClient;
+
+    const request = {
+      prompt: 'hello',
+      model: { vendor: 'selfagency-opilot', id: 'llama3.3:cloud' },
+    };
+
+    await ext.handleChatRequest(
+      request as any,
+      { history: [] } as any,
+      stream as any,
+      token as any,
+      mockClient as any,
+      undefined,
+    );
+
+    const allCalls = mockMarkdown.mock.calls.map((c: any[]) => c[0] as string);
+    expect(allCalls.join('')).toContain('fallback response');
+    expect(cloudClient.chat).toHaveBeenCalled();
+  });
+
+  it('uses openAiCompatChatOnce for cloud model tool call round', async () => {
+    const cloudClient = {
+      chat: vi.fn(),
+      generate: vi.fn(),
+    };
+
+    vi.doMock('./client.js', () => ({
+      getOllamaClient: vi.fn(),
+      testConnection: vi.fn(),
+      getOllamaHost: vi.fn(() => 'http://localhost:11434'),
+      getOllamaAuthToken: vi.fn().mockResolvedValue(undefined),
+      getCloudOllamaClient: vi.fn().mockResolvedValue(cloudClient),
+    }));
+
+    const chatCompletionsOnce = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: 'tool round done', tool_calls: undefined }, finish_reason: 'stop' }],
+    });
+
+    vi.doMock('./openaiCompat.js', () => ({
+      initiateChatCompletionsStream: vi.fn(),
+      chatCompletionsOnce,
+    }));
+
+    vi.doMock('./openaiCompatMapping.js', () => ({
+      ollamaMessagesToOpenAICompat: vi.fn((msgs: any[]) => msgs),
+      ollamaToolsToOpenAICompat: vi.fn(() => []),
+    }));
+
+    vi.doMock('vscode', () => ({
+      LanguageModelTextPart: class {
+        constructor(public value: string) {}
+      },
+      LanguageModelChatMessageRole: { User: 1, Assistant: 2 },
+      ChatRequestTurn: class {},
+      ChatResponseTurn: class {},
+      ChatResponseMarkdownPart: class {},
+      LanguageModelChatMessage: {
+        User: (content: string) => ({ role: 1, content }),
+        Assistant: (content: string) => ({ role: 2, content }),
+      },
+      lm: {
+        selectChatModels: vi.fn().mockResolvedValue([]),
+        tools: [{ name: 'my_tool', description: 'test', inputSchema: { type: 'object', properties: {} } }],
+      },
+      workspace: { getConfiguration: vi.fn().mockReturnValue({ get: vi.fn() }) },
+    }));
+
+    vi.doMock('./diagnostics.js', () => ({
+      createDiagnosticsLogger: () => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        exception: vi.fn(),
+      }),
+      getConfiguredLogLevel: vi.fn(() => 'info'),
+    }));
+    vi.doMock('./provider.js', () => ({
+      OllamaChatModelProvider: class {
+        setAuthToken = vi.fn();
+        prefetchModels = vi.fn();
+      },
+      isThinkingModelId: () => false,
+    }));
+    vi.doMock('./sidebar.js', () => ({ registerSidebar: vi.fn() }));
+    vi.doMock('./modelfiles.js', () => ({ registerModelfileManager: vi.fn() }));
+
+    const ext = await import('./extension.js');
+    const mockMarkdown = vi.fn();
+    const stream = { markdown: mockMarkdown };
+    const token = { isCancellationRequested: false };
+    const mockClient = { chat: vi.fn(), generate: vi.fn() };
+
+    const request = {
+      prompt: 'do something with tools',
+      model: { vendor: 'selfagency-opilot', id: 'llama3.3:cloud' },
+      toolInvocationToken: 'tok-cloud-1',
+    };
+
+    await ext.handleChatRequest(
+      request as any,
+      { history: [] } as any,
+      stream as any,
+      token as any,
+      mockClient as any,
+      undefined,
+    );
+
+    expect(chatCompletionsOnce).toHaveBeenCalled();
+    const allCalls = mockMarkdown.mock.calls.map((c: any[]) => c[0] as string);
+    expect(allCalls.join('')).toContain('tool round done');
   });
 });

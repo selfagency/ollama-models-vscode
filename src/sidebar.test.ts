@@ -2757,3 +2757,424 @@ describe('Provider lifecycle and disposal', () => {
     expect(disposeWrappers.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('sidebar command handlers', () => {
+  let sidebarModule: typeof import('./sidebar.js');
+  let mockVscode: any;
+
+  beforeEach(async () => {
+    vi.resetModules();
+
+    mockVscode = {
+      TreeItem: class {
+        label: string;
+        constructor(label: string) {
+          this.label = label;
+        }
+      },
+      ThemeIcon: class {},
+      TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+      EventEmitter: class {
+        event = {};
+        fire = vi.fn();
+      },
+      window: {
+        createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+        showInputBox: vi.fn(),
+        showErrorMessage: vi.fn(),
+        showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
+        withProgress: vi.fn(async (_options: unknown, callback: (progress: any, token: any) => Promise<void>) => {
+          const mockProgress = { report: vi.fn() };
+          const mockToken = { isCancellationRequested: false, onCancellationRequested: vi.fn() };
+          return callback(mockProgress, mockToken);
+        }),
+        createTerminal: vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() })),
+      },
+      commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+        executeCommand: vi.fn(),
+      },
+      env: { openExternal: vi.fn() },
+      Uri: { parse: vi.fn((v: string) => ({ value: v })) },
+      ProgressLocation: { Notification: 15 },
+      workspace: {
+        getConfiguration: vi.fn(() => ({ get: vi.fn(() => 0), update: vi.fn() })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    };
+
+    vi.doMock('vscode', () => mockVscode);
+    sidebarModule = await import('./sidebar.js');
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // --- handleRefreshLocalModels ---
+  it('handleRefreshLocalModels: calls refresh and shows info message', () => {
+    const { handleRefreshLocalModels } = sidebarModule;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+    handleRefreshLocalModels(localProvider);
+    expect(localProvider.refresh).toHaveBeenCalled();
+    expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith('Local models refreshed');
+  });
+
+  // --- handleRefreshLibrary ---
+  it('handleRefreshLibrary: calls refresh and shows info message', () => {
+    const { handleRefreshLibrary } = sidebarModule;
+    const libraryProvider = { refresh: vi.fn() } as unknown as LibraryModelsProvider;
+    handleRefreshLibrary(libraryProvider);
+    expect(libraryProvider.refresh).toHaveBeenCalled();
+    expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith('Library catalog refreshed');
+  });
+
+  // --- handleRefreshCloudModels ---
+  it('handleRefreshCloudModels: calls refresh and shows info message', () => {
+    const { handleRefreshCloudModels } = sidebarModule;
+    const cloudProvider = { refresh: vi.fn() } as unknown as CloudModelsProvider;
+    handleRefreshCloudModels(cloudProvider);
+    expect(cloudProvider.refresh).toHaveBeenCalled();
+    expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith('Cloud models refreshed');
+  });
+
+  // --- handleLoginToCloud ---
+  it('handleLoginToCloud: creates terminal, shows it, and sends ollama login', () => {
+    const { handleLoginToCloud } = sidebarModule;
+    const fakeTerminal = { show: vi.fn(), sendText: vi.fn() };
+    mockVscode.window.createTerminal = vi.fn(() => fakeTerminal);
+
+    handleLoginToCloud();
+
+    expect(mockVscode.window.createTerminal).toHaveBeenCalledWith({ name: 'Ollama Cloud Login' });
+    expect(fakeTerminal.show).toHaveBeenCalledWith(true);
+    expect(fakeTerminal.sendText).toHaveBeenCalledWith('ollama login', true);
+  });
+
+  // --- handleManageCloudApiKey ---
+  it('handleManageCloudApiKey: delegates to handleLoginToCloud (creates terminal)', async () => {
+    const { handleManageCloudApiKey } = sidebarModule;
+    const fakeTerminal = { show: vi.fn(), sendText: vi.fn() };
+    mockVscode.window.createTerminal = vi.fn(() => fakeTerminal);
+
+    const mockContext = {} as unknown as ExtensionContext;
+    const cloudProvider = {} as unknown as CloudModelsProvider;
+    const libraryProvider = {} as unknown as LibraryModelsProvider;
+
+    await handleManageCloudApiKey(mockContext, cloudProvider, libraryProvider);
+
+    expect(mockVscode.window.createTerminal).toHaveBeenCalledWith({ name: 'Ollama Cloud Login' });
+    expect(fakeTerminal.sendText).toHaveBeenCalledWith('ollama login', true);
+  });
+
+  // --- handleOpenCloudModel ---
+  it('handleOpenCloudModel: opens external URL for cloud-running item', () => {
+    const { handleOpenCloudModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama3.3' } as unknown as ModelTreeItem;
+    handleOpenCloudModel(item);
+    expect(mockVscode.env.openExternal).toHaveBeenCalled();
+  });
+
+  it('handleOpenCloudModel: opens external URL for cloud-stopped item', () => {
+    const { handleOpenCloudModel } = sidebarModule;
+    const item = { type: 'cloud-stopped', label: 'llama3.3' } as unknown as ModelTreeItem;
+    handleOpenCloudModel(item);
+    expect(mockVscode.env.openExternal).toHaveBeenCalled();
+  });
+
+  it('handleOpenCloudModel: does nothing for local-stopped item', () => {
+    const { handleOpenCloudModel } = sidebarModule;
+    const item = { type: 'local-stopped', label: 'llama3.3' } as unknown as ModelTreeItem;
+    handleOpenCloudModel(item);
+    expect(mockVscode.env.openExternal).not.toHaveBeenCalled();
+  });
+
+  // --- handleDeleteModel ---
+  it('handleDeleteModel: shows error when model is running (local-running)', async () => {
+    const { handleDeleteModel } = sidebarModule;
+    const item = { type: 'local-running', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handleDeleteModel(item, localProvider);
+
+    expect(mockVscode.window.showErrorMessage).toHaveBeenCalledWith('Stop the model before deleting it.');
+    expect(localProvider.deleteModel).not.toHaveBeenCalled();
+  });
+
+  it('handleDeleteModel: shows error when model is running (cloud-running)', async () => {
+    const { handleDeleteModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handleDeleteModel(item, localProvider);
+
+    expect(mockVscode.window.showErrorMessage).toHaveBeenCalledWith('Stop the model before deleting it.');
+    expect(localProvider.deleteModel).not.toHaveBeenCalled();
+  });
+
+  it('handleDeleteModel: deletes model on confirmation for local-stopped', async () => {
+    const { handleDeleteModel } = sidebarModule;
+    mockVscode.window.showWarningMessage = vi.fn().mockResolvedValue('Delete');
+    const item = { type: 'local-stopped', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { deleteModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    await handleDeleteModel(item, localProvider);
+
+    expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+      'Delete model "llama2:latest"?',
+      'Delete',
+      'Cancel',
+    );
+    expect(localProvider.deleteModel).toHaveBeenCalledWith('llama2:latest');
+  });
+
+  it('handleDeleteModel: does not delete model when user cancels', async () => {
+    const { handleDeleteModel } = sidebarModule;
+    mockVscode.window.showWarningMessage = vi.fn().mockResolvedValue('Cancel');
+    const item = { type: 'local-stopped', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { deleteModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handleDeleteModel(item, localProvider);
+
+    expect(localProvider.deleteModel).not.toHaveBeenCalled();
+  });
+
+  // --- handleOpenLibraryModelPage ---
+  it('handleOpenLibraryModelPage: opens external URL for library-model item', () => {
+    const { handleOpenLibraryModelPage } = sidebarModule;
+    const item = { type: 'library-model', label: 'llama3' } as unknown as ModelTreeItem;
+    handleOpenLibraryModelPage(item);
+    expect(mockVscode.env.openExternal).toHaveBeenCalled();
+  });
+
+  it('handleOpenLibraryModelPage: does nothing for library-model-variant item', () => {
+    const { handleOpenLibraryModelPage } = sidebarModule;
+    const item = { type: 'library-model-variant', label: 'llama3:8b' } as unknown as ModelTreeItem;
+    handleOpenLibraryModelPage(item);
+    expect(mockVscode.env.openExternal).not.toHaveBeenCalled();
+  });
+
+  // --- handleStartModel ---
+  it('handleStartModel: calls startModel for local-stopped item', () => {
+    const { handleStartModel } = sidebarModule;
+    const item = { type: 'local-stopped', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    handleStartModel(item, localProvider);
+
+    expect(localProvider.startModel).toHaveBeenCalledWith('llama2:latest');
+  });
+
+  it('handleStartModel: does nothing for non-local-stopped item', () => {
+    const { handleStartModel } = sidebarModule;
+    const item = { type: 'local-running', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    handleStartModel(item, localProvider);
+
+    expect(localProvider.startModel).not.toHaveBeenCalled();
+  });
+
+  // --- handleStopModel ---
+  it('handleStopModel: calls stopModel for local-running item', () => {
+    const { handleStopModel } = sidebarModule;
+    const item = { type: 'local-running', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    handleStopModel(item, localProvider);
+
+    expect(localProvider.stopModel).toHaveBeenCalledWith('llama2:latest');
+  });
+
+  it('handleStopModel: calls stopModel for cloud-running item', () => {
+    const { handleStopModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama3.3:cloud' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    handleStopModel(item, localProvider);
+
+    expect(localProvider.stopModel).toHaveBeenCalledWith('llama3.3:cloud');
+  });
+
+  it('handleStopModel: does nothing for local-stopped item', () => {
+    const { handleStopModel } = sidebarModule;
+    const item = { type: 'local-stopped', label: 'llama2:latest' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    handleStopModel(item, localProvider);
+
+    expect(localProvider.stopModel).not.toHaveBeenCalled();
+  });
+
+  // --- handleStartCloudModel ---
+  it('handleStartCloudModel: resolves model name via cloudProvider and calls startModel', async () => {
+    const { handleStartCloudModel } = sidebarModule;
+    const item = { type: 'cloud-stopped', label: 'llama3.3' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+    const cloudProvider = {
+      resolveRunnableCloudModelName: vi.fn().mockResolvedValue('llama3.3:cloud'),
+      markModelWarm: vi.fn(),
+      refresh: vi.fn(),
+    } as unknown as CloudModelsProvider;
+
+    await handleStartCloudModel(item, localProvider, cloudProvider);
+
+    expect(cloudProvider.resolveRunnableCloudModelName).toHaveBeenCalledWith('llama3.3');
+    expect(localProvider.startModel).toHaveBeenCalledWith('llama3.3:cloud');
+    expect(cloudProvider.markModelWarm).toHaveBeenCalledWith('llama3.3', 'llama3.3:cloud');
+    expect(cloudProvider.refresh).toHaveBeenCalled();
+  });
+
+  it('handleStartCloudModel: falls back to label:cloud when no cloudProvider', async () => {
+    const { handleStartCloudModel } = sidebarModule;
+    const item = { type: 'cloud-stopped', label: 'llama3.3' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    await handleStartCloudModel(item, localProvider, undefined);
+
+    expect(localProvider.startModel).toHaveBeenCalledWith('llama3.3:cloud');
+  });
+
+  it('handleStartCloudModel: uses label directly when it already contains colon and no cloudProvider', async () => {
+    const { handleStartCloudModel } = sidebarModule;
+    const item = { type: 'cloud-stopped', label: 'llama3.3:cloud' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    await handleStartCloudModel(item, localProvider, undefined);
+
+    expect(localProvider.startModel).toHaveBeenCalledWith('llama3.3:cloud');
+  });
+
+  it('handleStartCloudModel: does nothing for non-cloud-stopped item', async () => {
+    const { handleStartCloudModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama3.3' } as unknown as ModelTreeItem;
+    const localProvider = { startModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handleStartCloudModel(item, localProvider, undefined);
+
+    expect(localProvider.startModel).not.toHaveBeenCalled();
+  });
+
+  // --- handleStopCloudModel ---
+  it('handleStopCloudModel: resolves warmed model name via cloudProvider and calls stopModel', async () => {
+    const { handleStopCloudModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama3.3' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+    const cloudProvider = {
+      getWarmedModelName: vi.fn().mockReturnValue('llama3.3:cloud'),
+      markModelStopped: vi.fn(),
+      refresh: vi.fn(),
+    } as unknown as CloudModelsProvider;
+
+    await handleStopCloudModel(item, localProvider, cloudProvider);
+
+    expect(cloudProvider.getWarmedModelName).toHaveBeenCalledWith('llama3.3');
+    expect(localProvider.stopModel).toHaveBeenCalledWith('llama3.3:cloud');
+    expect(cloudProvider.markModelStopped).toHaveBeenCalledWith('llama3.3');
+    expect(cloudProvider.refresh).toHaveBeenCalled();
+  });
+
+  it('handleStopCloudModel: falls back to item label when no cloudProvider', async () => {
+    const { handleStopCloudModel } = sidebarModule;
+    const item = { type: 'cloud-running', label: 'llama3.3:cloud' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn().mockResolvedValue(undefined) } as unknown as LocalModelsProvider;
+
+    await handleStopCloudModel(item, localProvider, undefined);
+
+    expect(localProvider.stopModel).toHaveBeenCalledWith('llama3.3:cloud');
+  });
+
+  it('handleStopCloudModel: does nothing for non-cloud-running item', async () => {
+    const { handleStopCloudModel } = sidebarModule;
+    const item = { type: 'cloud-stopped', label: 'llama3.3' } as unknown as ModelTreeItem;
+    const localProvider = { stopModel: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handleStopCloudModel(item, localProvider, undefined);
+
+    expect(localProvider.stopModel).not.toHaveBeenCalled();
+  });
+
+  // --- handlePullModel ---
+  it('handlePullModel: pulls model when user enters a name', async () => {
+    const { handlePullModel } = sidebarModule;
+    mockVscode.window.showInputBox = vi.fn().mockResolvedValue('mistral:7b');
+    const mockClient = {
+      pull: vi.fn().mockResolvedValue(
+        (async function* () {
+          yield { status: 'done', total: 100, completed: 100 };
+        })(),
+      ),
+      abort: vi.fn(),
+    } as unknown as import('ollama').Ollama;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handlePullModel(mockClient, localProvider);
+
+    expect(mockVscode.window.showInputBox).toHaveBeenCalledWith({
+      prompt: 'Enter model name or identifier (e.g., llama2, mistral:7b)',
+      ignoreFocusOut: false,
+    });
+    expect(mockClient.pull).toHaveBeenCalledWith({ model: 'mistral:7b', stream: true });
+    expect(localProvider.refresh).toHaveBeenCalled();
+  });
+
+  it('handlePullModel: does nothing when user cancels input', async () => {
+    const { handlePullModel } = sidebarModule;
+    mockVscode.window.showInputBox = vi.fn().mockResolvedValue(undefined);
+    const mockClient = { pull: vi.fn(), abort: vi.fn() } as unknown as import('ollama').Ollama;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handlePullModel(mockClient, localProvider);
+
+    expect(mockClient.pull).not.toHaveBeenCalled();
+  });
+
+  // --- handlePullModelFromLibrary ---
+  it('handlePullModelFromLibrary: pulls model for library-model-variant item', async () => {
+    const { handlePullModelFromLibrary } = sidebarModule;
+    const item = { type: 'library-model-variant', label: 'llama3:8b' } as unknown as ModelTreeItem;
+    const mockClient = {
+      pull: vi.fn().mockResolvedValue(
+        (async function* () {
+          yield { status: 'done', total: 200, completed: 200 };
+        })(),
+      ),
+      abort: vi.fn(),
+    } as unknown as import('ollama').Ollama;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handlePullModelFromLibrary(item, mockClient, localProvider);
+
+    expect(mockClient.pull).toHaveBeenCalledWith({ model: 'llama3:8b', stream: true });
+  });
+
+  it('handlePullModelFromLibrary: pulls model for library-model-downloaded-variant item', async () => {
+    const { handlePullModelFromLibrary } = sidebarModule;
+    const item = { type: 'library-model-downloaded-variant', label: 'llama3:8b' } as unknown as ModelTreeItem;
+    const mockClient = {
+      pull: vi.fn().mockResolvedValue(
+        (async function* () {
+          yield { status: 'done', total: 200, completed: 200 };
+        })(),
+      ),
+      abort: vi.fn(),
+    } as unknown as import('ollama').Ollama;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handlePullModelFromLibrary(item, mockClient, localProvider);
+
+    expect(mockClient.pull).toHaveBeenCalledWith({ model: 'llama3:8b', stream: true });
+  });
+
+  it('handlePullModelFromLibrary: does nothing for non-variant item', async () => {
+    const { handlePullModelFromLibrary } = sidebarModule;
+    const item = { type: 'library-model', label: 'llama3' } as unknown as ModelTreeItem;
+    const mockClient = { pull: vi.fn(), abort: vi.fn() } as unknown as import('ollama').Ollama;
+    const localProvider = { refresh: vi.fn() } as unknown as LocalModelsProvider;
+
+    await handlePullModelFromLibrary(item, mockClient, localProvider);
+
+    expect(mockClient.pull).not.toHaveBeenCalled();
+  });
+});

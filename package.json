@@ -47,7 +47,7 @@
     "test:integration": "task integration-tests"
   },
   "dependencies": {
-    "@selfagency/llm-stream-parser": "^0.1.4",
+    "@selfagency/llm-stream-parser": "^0.1.5",
     "ollama": "^0.6.3"
   },
   "devDependencies": {
@@ -55,22 +55,22 @@
     "@octokit/rest": "^22.0.1",
     "@types/node": "^25.5.0",
     "@types/vscode": "^1.110.0",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.1",
     "@vscode/dts": "^0.4.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "assert": "^2.1.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.3.3",
+    "lint-staged": "^16.4.0",
     "npm-run-all": "^4.1.5",
     "ora": "^9.3.0",
-    "oxfmt": "^0.40.0",
-    "oxlint": "^1.55.0",
-    "oxlint-tsgolint": "^0.16.0",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "^0.17.4",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "6.0.2",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.1",
     "zx": "^8.8.5"
   },
   "contributes": {
@@ -115,27 +115,69 @@
         "category": "Ollama"
       },
       {
+        "command": "opilot.openModelSettingsForModel",
+        "title": "Open Model Settings for Model",
+        "icon": "$(edit)",
+        "category": "Ollama"
+      },
+      {
         "command": "opilot.filterLocalModels",
         "title": "Filter Local Models",
-        "icon": "$(filter)",
+        "icon": "$(search)",
         "category": "Ollama"
       },
       {
         "command": "opilot.clearLocalFilter",
         "title": "Clear Local Models Filter",
-        "icon": "$(clear-all)",
+        "icon": "$(close)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.filterLocalCapabilities",
+        "title": "Filter Local Models by Capability",
+        "icon": "$(filter)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.filterLocalCapabilitiesActive",
+        "title": "Filter Local Models by Capability (Active)",
+        "icon": "$(filter-filled)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.toggleLocalRecommended",
+        "title": "Show Only Recommended Local Models",
+        "icon": "$(star-empty)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.toggleLocalRecommendedOff",
+        "title": "Show All Local Models (Recommended Filter Active)",
+        "icon": "$(star-full)",
         "category": "Ollama"
       },
       {
         "command": "opilot.filterCloudModels",
         "title": "Filter Cloud Models",
-        "icon": "$(filter)",
+        "icon": "$(search)",
         "category": "Ollama"
       },
       {
         "command": "opilot.clearCloudFilter",
         "title": "Clear Cloud Models Filter",
-        "icon": "$(clear-all)",
+        "icon": "$(close)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.filterCloudCapabilities",
+        "title": "Filter Cloud Models by Capability",
+        "icon": "$(filter)",
+        "category": "Ollama"
+      },
+      {
+        "command": "opilot.filterCloudCapabilitiesActive",
+        "title": "Filter Cloud Models by Capability (Active)",
+        "icon": "$(filter-filled)",
         "category": "Ollama"
       },
       {
@@ -397,6 +439,26 @@
           "default": false,
           "markdownDescription": "Hide thinking/reasoning content in chat responses. When disabled (default), reasoning tokens stream as a blockquote before the response. When enabled, the thinking block is suppressed entirely."
         },
+        "opilot.repetitionDetection": {
+          "type": "string",
+          "enum": [
+            "off",
+            "conservative",
+            "moderate"
+          ],
+          "enumDescriptions": [
+            "Disable repetition detection.",
+            "Stop when the same phrase (≥20 chars) repeats 3 times consecutively in the last 500 chars of output.",
+            "Stop when the same phrase (≥10 chars) repeats 3 times consecutively in the last 400 chars of output."
+          ],
+          "default": "conservative",
+          "description": "Detect and cancel streaming responses that are stuck in a repetition loop."
+        },
+        "opilot.maxContextTokens": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Override the effective context-window token limit used for message truncation. `0` uses the model-reported value, then the per-model `num_ctx` override, then a built-in default of 8 192 tokens."
+        },
         "ollama.host": {
           "type": "string",
           "default": "http://localhost:11434",
@@ -496,44 +558,54 @@
           "group": "navigation@0"
         },
         {
+          "command": "opilot.filterLocalCapabilities",
+          "when": "view == ollama-local-models && !ollama.localCapabilityFilterActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opilot.filterLocalCapabilitiesActive",
+          "when": "view == ollama-local-models && ollama.localCapabilityFilterActive",
+          "group": "navigation@1"
+        },
+        {
           "command": "opilot.filterLocalModels",
           "when": "view == ollama-local-models && !ollama.localFilterActive",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "opilot.clearLocalFilter",
           "when": "view == ollama-local-models && ollama.localFilterActive",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "opilot.toggleLocalGrouping",
           "when": "view == ollama-local-models && ollama.localGrouped",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "opilot.toggleLocalGroupingToTree",
           "when": "view == ollama-local-models && !ollama.localGrouped",
-          "group": "navigation@2"
-        },
-        {
-          "command": "opilot.refreshLocalModels",
-          "when": "view == ollama-local-models",
           "group": "navigation@3"
         },
         {
-          "command": "opilot.collapseLocalModels",
+          "command": "opilot.refreshLocalModels",
           "when": "view == ollama-local-models",
           "group": "navigation@4"
         },
         {
           "command": "opilot.openModelSettings",
           "when": "view == ollama-local-models",
+          "group": "navigation@4"
+        },
+        {
+          "command": "opilot.collapseLocalModels",
+          "when": "view == ollama-local-models",
           "group": "navigation@5"
         },
         {
-          "command": "opilot.openModelSettings",
-          "when": "view == ollama-cloud-models",
-          "group": "navigation@5"
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-local-models && ollama.localModel =~ /;hasPencil$/",
+          "group": "inline@1"
         },
         {
           "command": "opilot.toggleLibraryRecommended",
@@ -591,34 +663,44 @@
           "group": "navigation@0"
         },
         {
+          "command": "opilot.filterCloudCapabilities",
+          "when": "view == ollama-cloud-models && !ollama.cloudCapabilityFilterActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opilot.filterCloudCapabilitiesActive",
+          "when": "view == ollama-cloud-models && ollama.cloudCapabilityFilterActive",
+          "group": "navigation@1"
+        },
+        {
           "command": "opilot.filterCloudModels",
           "when": "view == ollama-cloud-models && !ollama.cloudFilterActive",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "opilot.clearCloudFilter",
           "when": "view == ollama-cloud-models && ollama.cloudFilterActive",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "opilot.toggleCloudGrouping",
           "when": "view == ollama-cloud-models && ollama.cloudGrouped",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "opilot.toggleCloudGroupingToTree",
           "when": "view == ollama-cloud-models && !ollama.cloudGrouped",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "opilot.refreshCloudModels",
           "when": "view == ollama-cloud-models",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "opilot.collapseCloudModels",
           "when": "view == ollama-cloud-models",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "opilot.newModelfile",
@@ -648,9 +730,19 @@
           "group": "inline@2"
         },
         {
-          "command": "opilot.startModel",
-          "when": "view == ollama-local-models && viewItem == local-stopped",
-          "group": "inline@1"
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-local-models && viewItem == local-stopped;hasPencil",
+          "group": "inline@2"
+        },
+        {
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-local-models && viewItem == local-running;hasPencil",
+          "group": "inline@2"
+        },
+        {
+          "command": "opilot.stopModel",
+          "when": "view == ollama-local-models && viewItem == local-running",
+          "group": "inline@3"
         },
         {
           "command": "opilot.pullModelFromLibrary",
@@ -673,9 +765,19 @@
           "group": "inline@1"
         },
         {
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-cloud-models && viewItem == cloud-stopped;hasPencil",
+          "group": "inline@2"
+        },
+        {
+          "command": "opilot.openModelSettingsForModel",
+          "when": "view == ollama-cloud-models && viewItem == cloud-running;hasPencil",
+          "group": "inline@2"
+        },
+        {
           "command": "opilot.startCloudModel",
           "when": "view == ollama-cloud-models && viewItem == cloud-stopped",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "opilot.deleteModel",
