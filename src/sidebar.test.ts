@@ -3438,8 +3438,6 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
       ),
     );
 
-    const { getModelPreviewCacheSnapshot } = await import('./sidebar.js');
-
     const provider = new LibraryModelsProvider(undefined);
     // Trigger item build which fires getCachedModelPagePreview async
     const items = await provider.getChildren();
@@ -3448,13 +3446,11 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
     // Wait briefly for the async preview fetch to complete
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // The cache snapshot only exposes a count; verify at least one entry was cached.
+    const { getModelPreviewCacheSnapshot } = await import('./sidebar.js');
     const snapshot = getModelPreviewCacheSnapshot();
-    const cached = snapshot.entries['phi4'];
-    if (cached) {
-      expect(cached.description).toBe('A capable reasoning model');
-      expect(cached.capabilities.thinking).toBe(true);
-      expect(cached.capabilities.vision).toBe(true);
-    }
+    expect(snapshot.entries).toBeGreaterThan(0);
+
     provider.dispose();
   });
 
