@@ -1,11 +1,11 @@
 ---
 # opilot-0g2e
 title: 004 Replace interpolated shell commands with argument arrays
-status: todo
+status: completed
 type: bug
 priority: normal
 created_at: 2026-04-14T21:38:28Z
-updated_at: 2026-04-14T21:38:28Z
+updated_at: 2026-04-14T23:33:44Z
 parent: opilot-yva4
 id: opilot-0g2e
 ---
@@ -26,8 +26,22 @@ Use non-shell execution with explicit argument arrays so process identifiers are
 
 ## Todo
 
-- [ ] Locate all shell-command construction paths related to force-kill behavior
-- [ ] Replace interpolated command strings with safe process execution APIs and argument arrays
-- [ ] Ensure Windows and Unix implementations both preserve current behavior
-- [ ] Add or update tests for the command construction and execution path
-- [ ] Verify no remaining process-control commands rely on shell interpolation
+- [x] Locate all shell-command construction paths related to force-kill behavior
+- [x] Replace interpolated command strings with safe process execution APIs and argument arrays
+- [x] Ensure Windows and Unix implementations both preserve current behavior
+- [x] Add or update tests for the command construction and execution path
+- [x] Verify no remaining process-control commands rely on shell interpolation
+
+## Summary of Changes
+
+Replaced interpolated force-kill shell strings in `src/sidebar.ts` with argument-array execution:
+
+- Added `getForceKillCommand(pid, platform)` for explicit cross-platform command construction
+- Switched process kill execution to `execFile` (via promisified `execFileAsync`) for non-shell invocation
+
+Added test coverage in `src/sidebar.test.ts` for Windows and Unix command construction.
+
+Validation run:
+
+- `pnpm vitest run src/sidebar.test.ts`
+- `pnpm run compile`

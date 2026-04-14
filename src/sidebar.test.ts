@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtensionContext } from 'vscode';
 import { http, HttpResponse } from 'msw';
 import { server } from './mocks/node.js';
-import {
-  DEFAULT_LIBRARY_MODELS,
-  DEFAULT_OLLAMA_API_TAGS,
-  libraryPageHtml,
-  modelPageHtml,
-} from './mocks/handlers.js';
+import { DEFAULT_LIBRARY_MODELS, DEFAULT_OLLAMA_API_TAGS, libraryPageHtml, modelPageHtml } from './mocks/handlers.js';
 import type { CloudModelsProvider, LibraryModelsProvider, LocalModelsProvider, ModelTreeItem } from './sidebar.js';
 
 describe('LocalModelsProvider', () => {
@@ -132,6 +127,20 @@ describe('LocalModelsProvider', () => {
     vi.unstubAllGlobals();
     vi.resetModules();
     vi.restoreAllMocks();
+  });
+
+  it('builds force-kill commands using argument arrays for each platform', async () => {
+    const { getForceKillCommand } = await import('./sidebar.js');
+
+    expect(getForceKillCommand(1234, 'win32')).toEqual({
+      file: 'taskkill',
+      args: ['/F', '/PID', '1234'],
+    });
+
+    expect(getForceKillCommand(5678, 'linux')).toEqual({
+      file: 'kill',
+      args: ['-9', '5678'],
+    });
   });
 
   it('returns local models sorted alphabetically', async () => {
@@ -3278,7 +3287,9 @@ describe('LibraryModelsProvider HTTP (MSW)', () => {
     vi.resetModules();
     vi.doMock('vscode', () => MINIMAL_VSCODE_MOCK);
     vi.doMock('./client.js', () => ({
-      fetchModelCapabilities: vi.fn().mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
+      fetchModelCapabilities: vi
+        .fn()
+        .mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
       getCloudOllamaClient: vi.fn().mockResolvedValue(null),
     }));
     ({ LibraryModelsProvider } = await import('./sidebar.js'));
@@ -3297,9 +3308,7 @@ describe('LibraryModelsProvider HTTP (MSW)', () => {
   });
 
   it('returns status item when server returns non-OK status', async () => {
-    server.use(
-      http.get('https://ollama.com/library', () => new HttpResponse(null, { status: 503 })),
-    );
+    server.use(http.get('https://ollama.com/library', () => new HttpResponse(null, { status: 503 })));
 
     const provider = new LibraryModelsProvider(undefined);
     provider.grouped = false;
@@ -3311,11 +3320,7 @@ describe('LibraryModelsProvider HTTP (MSW)', () => {
   });
 
   it('returns status item when server returns non-HTML content-type', async () => {
-    server.use(
-      http.get('https://ollama.com/library', () =>
-        HttpResponse.json({ error: 'maintenance' }),
-      ),
-    );
+    server.use(http.get('https://ollama.com/library', () => HttpResponse.json({ error: 'maintenance' })));
 
     const provider = new LibraryModelsProvider(undefined);
     provider.grouped = false;
@@ -3328,15 +3333,19 @@ describe('LibraryModelsProvider HTTP (MSW)', () => {
 
   it('marks models from cloud search as cloud (☁️) badge', async () => {
     server.use(
-      http.get('https://ollama.com/library', () =>
-        new HttpResponse(libraryPageHtml(['phi4', 'devstral']), {
-          headers: { 'Content-Type': 'text/html' },
-        }),
+      http.get(
+        'https://ollama.com/library',
+        () =>
+          new HttpResponse(libraryPageHtml(['phi4', 'devstral']), {
+            headers: { 'Content-Type': 'text/html' },
+          }),
       ),
-      http.get('https://ollama.com/search', () =>
-        new HttpResponse(libraryPageHtml(['devstral']), {
-          headers: { 'Content-Type': 'text/html' },
-        }),
+      http.get(
+        'https://ollama.com/search',
+        () =>
+          new HttpResponse(libraryPageHtml(['devstral']), {
+            headers: { 'Content-Type': 'text/html' },
+          }),
       ),
     );
 
@@ -3357,7 +3366,9 @@ describe('CloudModelsProvider loadCloudCatalogFromNetwork (MSW)', () => {
     vi.resetModules();
     vi.doMock('vscode', () => MINIMAL_VSCODE_MOCK);
     vi.doMock('./client.js', () => ({
-      fetchModelCapabilities: vi.fn().mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
+      fetchModelCapabilities: vi
+        .fn()
+        .mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
       getCloudOllamaClient: vi.fn().mockResolvedValue({
         list: vi.fn().mockResolvedValue({ models: [] }),
         ps: vi.fn().mockResolvedValue({ models: [] }),
@@ -3381,16 +3392,16 @@ describe('CloudModelsProvider loadCloudCatalogFromNetwork (MSW)', () => {
 
   it('populates capability map from /search?c=cloud HTML via MSW', async () => {
     server.use(
-      http.get('https://ollama.com/api/tags', () =>
-        HttpResponse.json({ models: [{ name: 'qwen3:cloud' }] }),
-      ),
-      http.get('https://ollama.com/search', () =>
-        new HttpResponse(
-          `<!DOCTYPE html><html><body>
+      http.get('https://ollama.com/api/tags', () => HttpResponse.json({ models: [{ name: 'qwen3:cloud' }] })),
+      http.get(
+        'https://ollama.com/search',
+        () =>
+          new HttpResponse(
+            `<!DOCTYPE html><html><body>
           <a href="/library/qwen3"><span>Tools</span><span>Vision</span></a>
           </body></html>`,
-          { headers: { 'Content-Type': 'text/html' } },
-        ),
+            { headers: { 'Content-Type': 'text/html' } },
+          ),
       ),
     );
 
@@ -3422,7 +3433,9 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
     vi.resetModules();
     vi.doMock('vscode', () => MINIMAL_VSCODE_MOCK);
     vi.doMock('./client.js', () => ({
-      fetchModelCapabilities: vi.fn().mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
+      fetchModelCapabilities: vi
+        .fn()
+        .mockResolvedValue({ toolCalling: false, imageInput: false, maxInputTokens: null }),
       getCloudOllamaClient: vi.fn().mockResolvedValue(null),
     }));
     ({ LibraryModelsProvider } = await import('./sidebar.js'));
@@ -3430,18 +3443,21 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
 
   it('extracts title, description, and capabilities from model page HTML', async () => {
     server.use(
-      http.get('https://ollama.com/library', () =>
-        new HttpResponse(libraryPageHtml(['phi4']), { headers: { 'Content-Type': 'text/html' } }),
+      http.get(
+        'https://ollama.com/library',
+        () => new HttpResponse(libraryPageHtml(['phi4']), { headers: { 'Content-Type': 'text/html' } }),
       ),
-      http.get('https://ollama.com/library/phi4', () =>
-        new HttpResponse(
-          modelPageHtml({
-            name: 'phi4',
-            description: 'A capable reasoning model',
-            capabilities: ['Thinking', 'Vision'],
-          }),
-          { headers: { 'Content-Type': 'text/html' } },
-        ),
+      http.get(
+        'https://ollama.com/library/phi4',
+        () =>
+          new HttpResponse(
+            modelPageHtml({
+              name: 'phi4',
+              description: 'A capable reasoning model',
+              capabilities: ['Thinking', 'Vision'],
+            }),
+            { headers: { 'Content-Type': 'text/html' } },
+          ),
       ),
     );
 
@@ -3460,14 +3476,16 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
 
   it('applies 🛠️ badge to library items based on capabilities', async () => {
     server.use(
-      http.get('https://ollama.com/library', () =>
-        new HttpResponse(libraryPageHtml(['llama3.3']), { headers: { 'Content-Type': 'text/html' } }),
+      http.get(
+        'https://ollama.com/library',
+        () => new HttpResponse(libraryPageHtml(['llama3.3']), { headers: { 'Content-Type': 'text/html' } }),
       ),
-      http.get('https://ollama.com/library/llama3.3', () =>
-        new HttpResponse(
-          modelPageHtml({ name: 'llama3.3', capabilities: ['Tools'] }),
-          { headers: { 'Content-Type': 'text/html' } },
-        ),
+      http.get(
+        'https://ollama.com/library/llama3.3',
+        () =>
+          new HttpResponse(modelPageHtml({ name: 'llama3.3', capabilities: ['Tools'] }), {
+            headers: { 'Content-Type': 'text/html' },
+          }),
       ),
     );
 
@@ -3484,4 +3502,3 @@ describe('fetchModelPagePreview via LibraryModelsProvider (MSW)', () => {
     provider.dispose();
   });
 });
-

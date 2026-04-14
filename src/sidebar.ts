@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +27,18 @@ import { isThinkingModelId } from './provider.js';
 import { affectsSetting, getSetting } from './settings.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+export function getForceKillCommand(
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+): { file: string; args: string[] } {
+  const normalizedPid = Math.max(0, Math.trunc(pid));
+  if (platform === 'win32') {
+    return { file: 'taskkill', args: ['/F', '/PID', String(normalizedPid)] };
+  }
+  return { file: 'kill', args: ['-9', String(normalizedPid)] };
+}
 
 /**
  * Returns available system RAM in GB minus a fixed overhead for the OS and
@@ -1117,17 +1129,10 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
    */
   private async forceKillProcess(pid: number): Promise<boolean> {
     try {
-      const platform = process.platform;
-      let command: string;
-
-      if (platform === 'win32') {
-        command = `taskkill /F /PID ${pid}`;
-      } else {
-        command = `kill -9 ${pid}`;
-      }
+      const { file, args } = getForceKillCommand(pid);
 
       this.logChannel?.info(`[client] force-killing process ${pid}`);
-      await execAsync(command);
+      await execFileAsync(file, args);
       return true;
     } catch (error) {
       this.logChannel?.exception(`[client] failed to kill process ${pid}`, error);
