@@ -16,6 +16,7 @@ import {
   sanitizeNonStreamingModelOutput,
   splitLeadingXmlContextBlocks,
 } from './formatting';
+import { formatBytes } from './formatUtils.js';
 import { registerModelfileManager } from './modelfiles.js';
 import {
   buildSdkOptions,
@@ -57,6 +58,7 @@ export function toRuntimeModelId(modelId: string): string {
 }
 
 export { mapOpenAiToolCallsToOllamaLike } from './chatUtils.js';
+export { formatBytes } from './formatUtils.js';
 
 // normalizeToolParameters/isToolsNotSupportedError moved to src/toolUtils.ts
 
@@ -163,13 +165,6 @@ export function handleConfigurationChange(
   const enabled = getSetting<boolean>('streamLogs', true);
   diagnostics.info(`[client] Auto-start log streaming setting changed: ${enabled ? 'enabled' : 'disabled'}`);
   onAutoStartChange?.(enabled);
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function logPerformanceSnapshot(

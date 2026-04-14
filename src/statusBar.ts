@@ -1,6 +1,7 @@
 import type { Ollama } from 'ollama';
 import * as vscode from 'vscode';
 import type { DiagnosticsLogger } from './diagnostics.js';
+import { formatBytes } from './formatUtils.js';
 import { affectsSetting, getSetting } from './settings.js';
 
 /** Minimum poll interval enforced regardless of setting value (5 seconds). */
@@ -36,14 +37,6 @@ export interface HealthCheckResult {
   runningModels: RunningModelInfo[];
   host: string;
   checkedAt: Date;
-}
-
-/** Format bytes as a human-readable string (e.g. "3.72 GB"). */
-function formatBytes(bytes: number): string {
-  if (bytes < 1_024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(1)} KB`;
-  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
 }
 
 /**

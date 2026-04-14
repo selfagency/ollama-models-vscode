@@ -1,11 +1,11 @@
 ---
 # opilot-cu2n
 title: 002 Consolidate duplicated formatBytes helpers
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-04-14T21:38:28Z
-updated_at: 2026-04-14T21:38:28Z
+updated_at: 2026-04-14T23:10:11Z
 parent: opilot-1ubu
 id: opilot-cu2n
 ---
@@ -29,8 +29,23 @@ Replace the duplicated implementations with one reusable formatter that supports
 
 ## Todo
 
-- [ ] Compare the existing `formatBytes()` variants and document required output differences
-- [ ] Create a shared formatter API that handles precision and suffix needs explicitly
-- [ ] Replace the duplicated helpers with imports from the shared module
-- [ ] Add focused tests for zero, small, large, and edge-case values
-- [ ] Verify the affected UI surfaces now present sizes consistently
+- [x] Compare the existing `formatBytes()` variants and document required output differences
+- [x] Create a shared formatter API that handles precision and suffix needs explicitly
+- [x] Replace the duplicated helpers with imports from the shared module
+- [x] Add focused tests for zero, small, large, and edge-case values
+- [x] Verify the affected UI surfaces now present sizes consistently
+
+## Summary of Changes
+
+Added `src/formatUtils.ts` as the shared byte-size formatter and migrated existing duplicate `formatBytes` usage in `src/extension.ts` and `src/statusBar.ts` to the shared utility.
+
+Also added `src/formatUtils.test.ts` for explicit coverage of:
+
+- zero/small/large values
+- non-finite and negative edge cases
+- configurable precision by unit
+
+Validation run:
+
+- `pnpm vitest run src/formatUtils.test.ts src/extension.utils.test.ts src/statusBar.test.ts`
+- `pnpm run compile`
