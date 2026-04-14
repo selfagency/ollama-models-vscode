@@ -118,27 +118,42 @@ async function removeBuiltInOllamaFromChatLanguageModels(
     }
   }
 
+  const MAX_WRITE_RETRIES = 3;
   let changed = false;
+
   for (const modelsPath of candidatePaths) {
-    try {
-      const raw = await fsPromises.readFile(modelsPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        continue;
+    for (let attempt = 0; attempt < MAX_WRITE_RETRIES; attempt++) {
+      try {
+        const raw = await fsPromises.readFile(modelsPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          break;
+        }
+
+        const filtered = parsed.filter(
+          item => !(item && typeof item === 'object' && (item as Record<string, unknown>).vendor === 'ollama'),
+        );
+
+        if (filtered.length === parsed.length) {
+          break;
+        }
+
+        // Compare-and-retry: ensure file content did not change between read and write.
+        const latestRaw = await fsPromises.readFile(modelsPath, 'utf8');
+        if (latestRaw !== raw) {
+          if (attempt < MAX_WRITE_RETRIES - 1) {
+            continue;
+          }
+          break;
+        }
+
+        await fsPromises.writeFile(modelsPath, `${JSON.stringify(filtered, null, 2)}\n`, 'utf8');
+        changed = true;
+        break;
+      } catch {
+        // file missing/unreadable/unwritable for this candidate, continue trying others
+        break;
       }
-
-      const filtered = parsed.filter(
-        item => !(item && typeof item === 'object' && (item as Record<string, unknown>).vendor === 'ollama'),
-      );
-
-      if (filtered.length === parsed.length) {
-        continue;
-      }
-
-      await fsPromises.writeFile(modelsPath, `${JSON.stringify(filtered, null, 2)}\n`, 'utf8');
-      changed = true;
-    } catch {
-      // file missing/unreadable/unwritable for this candidate, continue trying others
     }
   }
 

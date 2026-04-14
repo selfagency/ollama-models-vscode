@@ -2516,6 +2516,66 @@ describe('handleBuiltInOllamaConflict', () => {
     expect(showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('disabled'), 'Reload Window');
   });
 
+  it('handles concurrent file changes during fallback by retrying with latest content', async () => {
+    const showWarningMessage = vi.fn().mockResolvedValue('Disable Built-in Ollama Provider');
+    const showInformationMessage = vi.fn().mockResolvedValue('Reload Window');
+    const showErrorMessage = vi.fn();
+    const mockUpdate = vi.fn().mockRejectedValue(new Error('not a registered configuration'));
+    const getConfiguration = vi.fn().mockReturnValue({ update: mockUpdate });
+    const selectChatModels = vi.fn().mockResolvedValue([{ id: 'ollama:llama3', vendor: 'ollama', name: 'Llama 3' }]);
+
+    const targetPath = '/fake/profiles/default/chatLanguageModels.json';
+    const originalRaw = JSON.stringify([
+      { vendor: 'ollama', id: 'llama3' },
+      { vendor: 'other', id: 'model1' },
+    ]);
+    const changedRaw = JSON.stringify([
+      { vendor: 'ollama', id: 'llama3' },
+      { vendor: 'other', id: 'model1' },
+      { vendor: 'other', id: 'model2' },
+    ]);
+
+    let targetReads = 0;
+    const readFile = vi.fn().mockImplementation((path: string) => {
+      if (path !== targetPath) {
+        throw new Error('ENOENT');
+      }
+      targetReads += 1;
+      if (targetReads === 1) return Promise.resolve(originalRaw); // first attempt read
+      if (targetReads === 2) return Promise.resolve(changedRaw); // detect race before write
+      return Promise.resolve(changedRaw); // retry read + confirm
+    });
+
+    const writeFile = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('node:fs', () => ({
+      promises: {
+        readdir: vi.fn().mockRejectedValue(new Error('ENOENT')),
+        readFile,
+        writeFile,
+      },
+    }));
+
+    const ext = await import('./extension.js');
+    const context = {
+      globalStorageUri: { fsPath: '/fake/profiles/default/globalStorage/selfagency.ollama' },
+    };
+
+    await ext.handleBuiltInOllamaConflict(
+      { showWarningMessage, showInformationMessage, showErrorMessage },
+      { getConfiguration },
+      { selectChatModels },
+      undefined,
+      context as any,
+    );
+
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    const written = writeFile.mock.calls[0][1] as string;
+    expect(written).toContain('model2');
+    expect(written).not.toContain('"vendor": "ollama"');
+    expect(showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('disabled'), 'Reload Window');
+  });
+
   it('shows error when file-based removal finds no ollama entries to remove', async () => {
     const showWarningMessage = vi.fn().mockResolvedValue('Disable Built-in Ollama Provider');
     const showInformationMessage = vi.fn();
