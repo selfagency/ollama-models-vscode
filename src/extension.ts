@@ -382,7 +382,14 @@ export async function handleChatRequest(
       // This keeps IDE-injected context separate from the conversational user turn.
       const systemContextParts: string[] = [];
 
-      const ollamaMessages: (Message & { tool_call_id?: string })[] = messages.map(msg => {
+      type OllamaToolResultMessage = {
+        role: 'tool';
+        content: string;
+        tool_name: string;
+        tool_call_id?: string;
+      };
+
+      const ollamaMessages: Array<Message | OllamaToolResultMessage> = messages.map(msg => {
         const isUser = msg.role === vscode.LanguageModelChatMessageRole.User;
         let content = (Array.isArray(msg.content) ? msg.content : [])
           .filter((p): p is vscode.LanguageModelTextPart => p instanceof vscode.LanguageModelTextPart)
@@ -539,7 +546,7 @@ export async function handleChatRequest(
               content: resultText,
               tool_name: toolName,
               tool_call_id: (toolCall as { id?: string }).id,
-            } as never);
+            });
           }
 
           // task_complete signals the agent is done — display any final content and exit.
