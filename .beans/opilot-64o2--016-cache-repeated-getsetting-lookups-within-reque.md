@@ -1,11 +1,11 @@
 ---
 # opilot-64o2
 title: 016 Cache repeated getSetting lookups within request scope
-status: todo
+status: completed
 type: task
 priority: low
 created_at: 2026-04-14T21:39:09Z
-updated_at: 2026-04-14T21:39:09Z
+updated_at: 2026-04-15T09:02:00Z
 parent: opilot-wn59
 id: opilot-64o2
 ---
@@ -26,8 +26,20 @@ Avoid redundant settings access in hot paths while keeping configuration behavio
 
 ## Todo
 
-- [ ] Identify request paths with repeated `getSetting()` calls for the same keys
-- [ ] Introduce request-scoped caching or local extraction where it improves clarity
-- [ ] Avoid global caching that could hide live configuration changes unexpectedly
-- [ ] Add or update tests for the affected call paths if needed
-- [ ] Verify the resulting code is simpler as well as slightly faster
+- [x] Identify request paths with repeated `getSetting()` calls for the same keys
+- [x] Introduce request-scoped caching or local extraction where it improves clarity
+- [x] Avoid global caching that could hide live configuration changes unexpectedly
+- [x] Add or update tests for the affected call paths if needed
+- [x] Verify the resulting code is simpler as well as slightly faster
+
+## Summary of Changes
+
+Audit outcome:
+
+- Reviewed request-scoped settings reads in `src/extension.ts`, `src/provider.ts`, and `src/sidebar.ts`.
+- Current hot paths already read each relevant key once per request scope (or at periodic refresh boundaries), so no additional request-cache layer was required.
+- Avoided introducing global caching to preserve live settings behavior.
+
+Validation run:
+
+- `pnpm run compile`
