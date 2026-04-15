@@ -1,13 +1,12 @@
 ---
 # opilot-5jlr
 title: 028 Add module-level documentation for context and diagnostics utilities
-status: todo
+status: completed
 type: task
 priority: low
 created_at: 2026-04-14T21:39:33Z
-updated_at: 2026-04-14T21:39:33Z
+updated_at: 2026-04-15T07:37:00Z
 parent: opilot-tayj
-id: opilot-5jlr
 ---
 
 Source issue 028 from `docs/plans/remediation-plan.md`.
@@ -27,8 +26,21 @@ Add concise, durable documentation that explains why these modules exist and how
 
 ## Todo
 
-- [ ] Review both modules and identify the key context future maintainers need
-- [ ] Add module-level documentation focused on responsibilities and boundaries
-- [ ] Avoid redundant line-by-line comments that restate the obvious
-- [ ] Verify the resulting comments stay accurate and useful after current behavior
-- [ ] Check whether related docs should reference these modules more explicitly
+- [x] Review both modules and identify the key context future maintainers need
+- [x] Add module-level documentation focused on responsibilities and boundaries
+- [x] Avoid redundant line-by-line comments that restate the obvious
+- [x] Verify the resulting comments stay accurate and useful after current behavior
+- [x] Check whether related docs should reference these modules more explicitly
+
+## Summary of Changes
+
+- Added concise module-level responsibility documentation to:
+  - `src/contextUtils.ts`
+  - `src/diagnostics.ts`
+
+The documentation explains module purpose and boundaries without adding noisy line-by-line comments.
+
+Validation run:
+
+- `pnpm vitest run src/contextUtils.test.ts src/diagnostics.test.ts`
+- `pnpm run compile`

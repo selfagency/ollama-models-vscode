@@ -1,4 +1,12 @@
-// src/contextUtils.ts
+/**
+ * Shared prompt/context-budget helpers for chat request preparation.
+ *
+ * Responsibilities:
+ * - define base system prompt constraints used by chat flows
+ * - estimate message token usage conservatively
+ * - truncate message history to fit model context windows
+ * - detect repetition loops in streamed output buffers
+ */
 
 import type { Message } from 'ollama';
 

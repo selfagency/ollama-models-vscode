@@ -1,3 +1,12 @@
+/**
+ * Centralized diagnostics logging adapter for the extension.
+ *
+ * Responsibilities:
+ * - map extension log events to VS Code LogOutputChannel APIs
+ * - enforce runtime log-level filtering from settings
+ * - provide consistent error/exception formatting across modules
+ */
+
 import * as vscode from 'vscode';
 import { getSetting } from './settings.js';
 
