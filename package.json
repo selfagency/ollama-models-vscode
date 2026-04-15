@@ -81,6 +81,17 @@
         "name": "ollama",
         "fullName": "Ollama",
         "description": "Chat with an Ollama model",
+        "disambiguation": [
+          {
+            "category": "local-and-cloud-ollama-models",
+            "description": "Use for prompts that should run on Ollama models (local or cloud), including coding help, model behavior checks, and Ollama-specific troubleshooting.",
+            "examples": [
+              "Use my local Ollama model to explain this TypeScript error.",
+              "Why is my Ollama model not responding in VS Code?",
+              "Refactor this function using @ollama and keep the existing behavior."
+            ]
+          }
+        ],
         "isSticky": true
       }
     ],
