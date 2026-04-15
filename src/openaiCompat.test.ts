@@ -228,15 +228,17 @@ describe('chatCompletionsStream', () => {
 
   it('skips malformed JSON payloads and continues stream', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        new HttpResponse(
-          streamFromChunks([
-            'data: {not-json}\n\n',
-            'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n',
-            'data: [DONE]\n\n',
-          ]),
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        ),
+      http.post(
+        'http://localhost:11434/v1/chat/completions',
+        () =>
+          new HttpResponse(
+            streamFromChunks([
+              'data: {not-json}\n\n',
+              'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n',
+              'data: [DONE]\n\n',
+            ]),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
       ),
     );
 
@@ -256,9 +258,7 @@ describe('chatCompletionsStream', () => {
 
   it('throws when stream response is non-OK', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        HttpResponse.text('bad', { status: 502 }),
-      ),
+      http.post('http://localhost:11434/v1/chat/completions', () => HttpResponse.text('bad', { status: 502 })),
     );
 
     await expect(
@@ -275,11 +275,7 @@ describe('chatCompletionsStream', () => {
   });
 
   it('throws when stream response has no body', async () => {
-    server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        new HttpResponse(null, { status: 200 }),
-      ),
-    );
+    server.use(http.post('http://localhost:11434/v1/chat/completions', () => new HttpResponse(null, { status: 200 })));
 
     await expect(
       collect(
@@ -293,20 +289,51 @@ describe('chatCompletionsStream', () => {
       ),
     ).rejects.toThrow('OpenAI-compat stream request failed: response body is empty');
   });
+
+  it('throws when a mid-stream error payload is received', async () => {
+    server.use(
+      http.post(
+        'http://localhost:11434/v1/chat/completions',
+        () =>
+          new HttpResponse(
+            streamFromChunks([
+              'data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}\n\n',
+              'data: {"error":{"message":"quota exceeded","code":"rate_limit"}}\n\n',
+              'data: [DONE]\n\n',
+            ]),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    );
+
+    await expect(
+      collect(
+        chatCompletionsStream({
+          baseUrl: 'http://localhost:11434',
+          request: {
+            model: 'llama3.2',
+            messages: [{ role: 'user', content: 'hi' }],
+          },
+        }),
+      ),
+    ).rejects.toThrow('OpenAI-compat stream payload error: quota exceeded | rate_limit');
+  });
 });
 
 describe('initiateChatCompletionsStream', () => {
   it('eagerly establishes connection and yields parsed SSE JSON payloads', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        new HttpResponse(
-          streamFromChunks([
-            'data: {"id":"c1","choices":[{"index":0,"delta":{"content":"hello"}}]}\n\n',
-            'data: {"id":"c2","choices":[{"index":0,"delta":{"content":" world"}}]}\n\n',
-            'data: [DONE]\n\n',
-          ]),
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        ),
+      http.post(
+        'http://localhost:11434/v1/chat/completions',
+        () =>
+          new HttpResponse(
+            streamFromChunks([
+              'data: {"id":"c1","choices":[{"index":0,"delta":{"content":"hello"}}]}\n\n',
+              'data: {"id":"c2","choices":[{"index":0,"delta":{"content":" world"}}]}\n\n',
+              'data: [DONE]\n\n',
+            ]),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
       ),
     );
 
@@ -326,9 +353,7 @@ describe('initiateChatCompletionsStream', () => {
 
   it('throws synchronously when non-OK response is returned', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        HttpResponse.text('unauthorized', { status: 401 }),
-      ),
+      http.post('http://localhost:11434/v1/chat/completions', () => HttpResponse.text('unauthorized', { status: 401 })),
     );
 
     await expect(
@@ -343,11 +368,7 @@ describe('initiateChatCompletionsStream', () => {
   });
 
   it('throws synchronously when response body is empty', async () => {
-    server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        new HttpResponse(null, { status: 200 }),
-      ),
-    );
+    server.use(http.post('http://localhost:11434/v1/chat/completions', () => new HttpResponse(null, { status: 200 })));
 
     await expect(
       initiateChatCompletionsStream({
@@ -362,15 +383,17 @@ describe('initiateChatCompletionsStream', () => {
 
   it('skips malformed JSON payloads and continues stream', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        new HttpResponse(
-          streamFromChunks([
-            'data: {not-json}\n\n',
-            'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n',
-            'data: [DONE]\n\n',
-          ]),
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        ),
+      http.post(
+        'http://localhost:11434/v1/chat/completions',
+        () =>
+          new HttpResponse(
+            streamFromChunks([
+              'data: {not-json}\n\n',
+              'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n',
+              'data: [DONE]\n\n',
+            ]),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
       ),
     );
 
@@ -389,9 +412,7 @@ describe('initiateChatCompletionsStream', () => {
 
   it('reads error body when fetch fails and includes it in error message', async () => {
     server.use(
-      http.post('http://localhost:11434/v1/chat/completions', () =>
-        HttpResponse.text('rate limited', { status: 429 }),
-      ),
+      http.post('http://localhost:11434/v1/chat/completions', () => HttpResponse.text('rate limited', { status: 429 })),
     );
 
     await expect(
@@ -434,5 +455,33 @@ describe('initiateChatCompletionsStream', () => {
     const body = await captured?.json();
     expect(body).toMatchObject({ stream: true });
   });
-});
 
+  it('throws during iteration when a mid-stream error payload is received', async () => {
+    server.use(
+      http.post(
+        'http://localhost:11434/v1/chat/completions',
+        () =>
+          new HttpResponse(
+            streamFromChunks([
+              'data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}\n\n',
+              'data: {"error":{"message":"upstream failure","type":"server_error"}}\n\n',
+              'data: [DONE]\n\n',
+            ]),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    );
+
+    const generator = await initiateChatCompletionsStream({
+      baseUrl: 'http://localhost:11434',
+      request: {
+        model: 'llama3.2',
+        messages: [{ role: 'user', content: 'hi' }],
+      },
+    });
+
+    await expect(collect(generator)).rejects.toThrow(
+      'OpenAI-compat stream payload error: upstream failure | server_error',
+    );
+  });
+});

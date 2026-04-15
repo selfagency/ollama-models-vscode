@@ -63,6 +63,16 @@ export interface OpenAICompatRequestOptions {
   signal?: AbortSignal;
 }
 
+type OpenAICompatStreamErrorPayload = {
+  error?:
+    | string
+    | {
+        message?: string;
+        code?: string | number;
+        type?: string;
+      };
+};
+
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '');
 }
@@ -117,6 +127,27 @@ async function* toTextChunks(stream: ReadableStream<Uint8Array>): AsyncGenerator
   } finally {
     reader.releaseLock();
   }
+}
+
+function assertNoMidStreamError(parsed: unknown): void {
+  if (!parsed || typeof parsed !== 'object') {
+    return;
+  }
+
+  const candidate = parsed as OpenAICompatStreamErrorPayload;
+  if (!candidate.error) {
+    return;
+  }
+
+  if (typeof candidate.error === 'string') {
+    throw new Error(`OpenAI-compat stream payload error: ${candidate.error}`);
+  }
+
+  const parts = [candidate.error.message, candidate.error.type, candidate.error.code]
+    .filter(part => part !== undefined && part !== null && String(part).trim() !== '')
+    .map(part => String(part).trim());
+
+  throw new Error(`OpenAI-compat stream payload error: ${parts.join(' | ') || 'unknown error'}`);
 }
 
 /**
@@ -213,6 +244,8 @@ export async function* chatCompletionsStream(
       continue;
     }
 
+    assertNoMidStreamError(parsed);
+
     if (parsed && typeof parsed === 'object') {
       yield parsed as OpenAICompatChatCompletionChunk;
     }
@@ -256,6 +289,8 @@ export async function initiateChatCompletionsStream(
       } catch {
         continue;
       }
+
+      assertNoMidStreamError(parsed);
 
       if (parsed && typeof parsed === 'object') {
         yield parsed as OpenAICompatChatCompletionChunk;
