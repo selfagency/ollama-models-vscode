@@ -209,6 +209,9 @@ export async function* parseSseDataPayloadsFromTextChunks(chunks: AsyncIterable<
 
   const payload = dataLines.join('\n').trim();
   if (!payload || payload === '[DONE]') {
+    if (trailing.length > 0 && dataLines.length === 0) {
+      console.warn('[openai-compat] trailing SSE buffer contained no data payload and was discarded');
+    }
     return;
   }
 

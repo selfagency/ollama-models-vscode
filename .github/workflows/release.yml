@@ -103,8 +103,24 @@ jobs:
               return;
             }
 
-            // Tests are verified by the local release script before tagging.
-            // We only need to confirm the tag points to the current main HEAD.
+            // Verify that the CI workflow passed for this commit.
+            const ciRuns = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: 'ci.yml',
+              head_sha: mainSha,
+              status: 'completed',
+              per_page: 5,
+            });
+            const successfulRun = ciRuns.data.workflow_runs.find(r => r.conclusion === 'success');
+            if (!successfulRun) {
+              core.setFailed(
+                `Release blocked: no successful CI run found for commit ${mainSha}. Push to main and wait for CI to pass before releasing.`
+              );
+              return;
+            }
+            core.info(`CI run ${successfulRun.id} passed for commit ${mainSha}.`);
+
             core.info(`Release tag detected: ${tagName} on latest main commit ${mainSha}; tag verified.`);
             const isPrerelease = tagName.includes('-') || (context.eventName === 'workflow_dispatch' && '${{ inputs.pre_release }}' === 'true');
             core.setOutput('release_tag', tagName);

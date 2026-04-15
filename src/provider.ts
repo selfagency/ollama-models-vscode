@@ -233,7 +233,9 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
         detail: '🦙 Ollama',
         tooltip: `🦙 Ollama • ${modelId}`,
         maxInputTokens: this.getAdvertisedContextLength(contextLength, false),
-        maxOutputTokens: this.getAdvertisedContextLength(contextLength, false),
+        // Output tokens should not mirror picker-context fallback values.
+        // Use a conservative default when model metadata is unavailable.
+        maxOutputTokens: 4096,
         capabilities: {
           imageInput: false,
           toolCalling: this.getAdvertisedToolCalling(nativeToolCalling),
@@ -381,6 +383,16 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
       this.visionByModelId.set(providerModelId, isVision);
       const advertisedContextLength = this.getAdvertisedContextLength(contextLength, nativeToolCalling);
 
+      // Parse num_predict for output token limit (independent of context window).
+      let maxOutputTokens = 4096;
+      if (parameters) {
+        const predictMatch = /num_predict\s+(-?\d+)/m.exec(parameters);
+        if (predictMatch) {
+          const val = parseInt(predictMatch[1], 10);
+          maxOutputTokens = val > 0 ? val : advertisedContextLength;
+        }
+      }
+
       return this.withModelPickerMetadata(
         {
           id: providerModelId,
@@ -390,7 +402,7 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
           detail: '🦙 Ollama',
           tooltip: `🦙 Ollama • ${modelId}`,
           maxInputTokens: advertisedContextLength,
-          maxOutputTokens: advertisedContextLength,
+          maxOutputTokens,
           capabilities: {
             imageInput: isVision,
             toolCalling: this.getAdvertisedToolCalling(nativeToolCalling),
@@ -647,10 +659,10 @@ export class OllamaChatModelProvider implements LanguageModelChatProvider<Langua
             });
 
       try {
-        this.outputChannel.info(
+        this.outputChannel.debug(
           `[client] chat request: model=${runtimeModelId}, messages=${ollamaMessages?.length ?? 0}, tools=${tools?.length ?? 0}, think=${shouldThink}, native=${!isCloudModel}`,
         );
-        this.outputChannel.info(
+        this.outputChannel.debug(
           `[client] full request payload:\n${JSON.stringify({ model: runtimeModelId, messages: ollamaMessages, tools, think: shouldThink }, null, 2)}`,
         );
         response = await streamFn(shouldThink, tools);

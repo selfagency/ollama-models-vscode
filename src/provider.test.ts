@@ -264,7 +264,7 @@ describe('OllamaChatModelProvider model detection', () => {
       {} as unknown as CancellationToken,
     );
     expect(models[0]?.maxInputTokens).toBe(131072);
-    expect(models[0]?.maxOutputTokens).toBe(131072);
+    expect(models[0]?.maxOutputTokens).toBe(4096);
     expect((models[0] as unknown as { category?: { label?: string } })?.category?.label).toBe('Ask');
   });
 

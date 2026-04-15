@@ -112,7 +112,13 @@ jobs:
             ${{ runner.os }}-ollama-
 
       - name: Run integration tests
-        run: xvfb-run -a ./node_modules/.bin/task integration-tests
+        run: |
+          if [[ -n "${OLLAMA_CLOUD_API_KEY:-}" ]]; then
+            echo "✅ OLLAMA_API_KEY detected; running integration tests with cloud coverage enabled."
+          else
+            echo "⚠️ OLLAMA_API_KEY not configured; running integration tests in local-only mode."
+          fi
+          xvfb-run -a ./node_modules/.bin/task integration-tests
         env:
           CI: true
           OLLAMA_TEST_MODEL: smollm:135m

@@ -222,7 +222,18 @@ export async function fetchModelCapabilities(client: Ollama, modelId: string): P
     }
 
     const maxInputTokens = contextLength;
-    const maxOutputTokens = contextLength;
+
+    // Ollama's output limit is num_predict (default varies by model, typically
+    // -1 for unlimited or a model-specific cap). Parse from parameters if set;
+    // otherwise use a conservative default that doesn't conflate with context length.
+    let maxOutputTokens = 4096;
+    if (typeof parameters === 'string') {
+      const predictMatch = /num_predict\s+(-?\d+)/m.exec(parameters);
+      if (predictMatch) {
+        const val = parseInt(predictMatch[1], 10);
+        maxOutputTokens = val > 0 ? val : contextLength;
+      }
+    }
 
     // Detect thinking support from capabilities array or template
     const capabilitiesArr = (modelInfo as unknown as Record<string, unknown>).capabilities;

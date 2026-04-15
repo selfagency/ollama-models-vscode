@@ -413,7 +413,7 @@ describe('fetchModelCapabilities', () => {
 
     const caps = await fetchModelCapabilities(client, 'llama3.2:latest');
     expect(caps.maxInputTokens).toBe(8192);
-    expect(caps.maxOutputTokens).toBe(8192);
+    expect(caps.maxOutputTokens).toBe(4096);
   });
 
   it('reads context length from model_info plain object with family-specific key', async () => {

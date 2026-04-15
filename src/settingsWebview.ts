@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import type { DiagnosticsLogger } from './diagnostics.js';
 import type { ModelOptionOverrides, ModelSettingsStore } from './modelSettings.js';
@@ -14,12 +15,7 @@ export interface ModelSettingsViewProviderOptions {
 }
 
 function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < 32; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return randomUUID().replace(/-/g, '');
 }
 
 function isFiniteNumber(value: unknown): value is number {
