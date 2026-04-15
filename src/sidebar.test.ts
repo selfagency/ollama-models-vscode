@@ -143,6 +143,26 @@ describe('LocalModelsProvider', () => {
     });
   });
 
+  it('reads Linux logs via journalctl when command exists', async () => {
+    const { readLinuxJournalctlLogs } = await import('./sidebar.js');
+
+    const logs = await readLinuxJournalctlLogs(async (_file, _args) => ({ stdout: 'log line' }));
+
+    expect(logs).toBe('log line');
+  });
+
+  it('returns null when journalctl is unavailable', async () => {
+    const { readLinuxJournalctlLogs } = await import('./sidebar.js');
+
+    const logs = await readLinuxJournalctlLogs(async () => {
+      const err = new Error('not found') as NodeJS.ErrnoException;
+      err.code = 'ENOENT';
+      throw err;
+    });
+
+    expect(logs).toBeNull();
+  });
+
   it('returns local models sorted alphabetically', async () => {
     const models = await provider.getChildren();
 

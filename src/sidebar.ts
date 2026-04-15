@@ -1,4 +1,4 @@
-import { exec, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import { join } from 'node:path';
@@ -26,8 +26,23 @@ import { reportError } from './errorHandler.js';
 import { isThinkingModelId } from './provider.js';
 import { affectsSetting, getSetting } from './settings.js';
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+
+export async function readLinuxJournalctlLogs(
+  runCommand: (file: string, args: string[]) => Promise<{ stdout: string }> = (file, args) =>
+    execFileAsync(file, args) as Promise<{ stdout: string }>,
+): Promise<string | null> {
+  try {
+    const { stdout } = await runCommand('journalctl', ['-u', 'ollama', '-n', '1000', '--no-pager', '--output=cat']);
+    return stdout;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
 
 export function getForceKillCommand(
   pid: number,
@@ -1092,9 +1107,13 @@ export class LocalModelsProvider implements TreeDataProvider<ModelTreeItem>, Dis
         const logPath = join(process.env['LOCALAPPDATA'] ?? '', 'Ollama', 'server.log');
         logContent = await readFile(logPath, 'utf-8');
       } else if (platform === 'linux') {
-        // On Linux, use journalctl to get recent logs
-        const { stdout } = await execAsync('journalctl -u ollama -n 1000 --no-pager --output=cat');
-        logContent = stdout;
+        // On Linux, use journalctl to get recent logs when available.
+        const logs = await readLinuxJournalctlLogs();
+        if (logs === null) {
+          this.logChannel?.warn('[client] journalctl not found in PATH; cannot extract model PID from logs');
+          return null;
+        }
+        logContent = logs;
       } else {
         this.logChannel?.warn(`[client] PID extraction not supported on platform: ${platform}`);
         return null;
