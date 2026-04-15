@@ -151,6 +151,16 @@ describe('detectsRepetition', () => {
     expect(detectsRepetition(buffer, 'conservative')).toBe(false);
     expect(detectsRepetition(buffer, 'moderate')).toBe(false);
   });
+
+  it('handles long mixed buffers without false positives', () => {
+    const chunkA = 'alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-';
+    const chunkB = 'lambda-mu-nu-xi-omicron-pi-rho-sigma-tau-upsilon-phi-chi-';
+    const chunkC = 'psi-omega-1234567890-abcdef-ghijkl-mnopqr-stuvwx-yz-';
+    const buffer = Array.from({ length: 6 }, (_, i) => `${chunkA}${chunkB}${chunkC}${i}`).join('::');
+
+    expect(detectsRepetition(buffer, 'conservative')).toBe(false);
+    expect(detectsRepetition(buffer, 'moderate')).toBe(false);
+  });
 });
 
 describe('resolveContextLimit', () => {

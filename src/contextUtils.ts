@@ -122,18 +122,50 @@ export function detectsRepetition(buffer: string, sensitivity: 'off' | 'conserva
   const minPhraseLen = sensitivity === 'conservative' ? 20 : 10;
   const text = buffer.slice(-windowSize);
 
-  // For each suffix length from minPhraseLen up to 1/3 of the window,
-  // check if the last three occurrences of that suffix are consecutive
-  // (i.e. the text ends with phrase+phrase+phrase).
-  const maxPhraseLen = Math.floor(text.length / 3);
+  // O(n) suffix repetition scan using rolling hashes over the current window.
+  // We still confirm candidates with direct string comparison to avoid false
+  // positives from rare hash collisions.
+  const n = text.length;
+  const maxPhraseLen = Math.floor(n / 3);
+  if (maxPhraseLen < minPhraseLen) {
+    return false;
+  }
+
+  const base = 911382323;
+  const prefix = new Uint32Array(n + 1);
+  const pow = new Uint32Array(n + 1);
+  pow[0] = 1;
+
+  for (let i = 0; i < n; i++) {
+    prefix[i + 1] = (Math.imul(prefix[i], base) + text.charCodeAt(i)) >>> 0;
+    pow[i + 1] = Math.imul(pow[i], base) >>> 0;
+  }
+
+  const hashRange = (start: number, end: number): number => {
+    const len = end - start;
+    return (prefix[end] - Math.imul(prefix[start], pow[len])) >>> 0;
+  };
+
   for (let len = minPhraseLen; len <= maxPhraseLen; len++) {
-    const phrase = text.slice(-len);
-    const twice = text.slice(-(len * 2), -len);
-    const thrice = text.slice(-(len * 3), -(len * 2));
-    if (twice === phrase && thrice === phrase) {
+    const firstStart = n - 3 * len;
+    const secondStart = n - 2 * len;
+    const thirdStart = n - len;
+
+    if (hashRange(firstStart, secondStart) !== hashRange(secondStart, thirdStart)) {
+      continue;
+    }
+    if (hashRange(secondStart, thirdStart) !== hashRange(thirdStart, n)) {
+      continue;
+    }
+
+    const first = text.slice(firstStart, secondStart);
+    const second = text.slice(secondStart, thirdStart);
+    const third = text.slice(thirdStart, n);
+    if (first === second && second === third) {
       return true;
     }
   }
+
   return false;
 }
 
