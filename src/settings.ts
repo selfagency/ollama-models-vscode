@@ -116,11 +116,13 @@ export async function migrateLegacySettings(logger?: LoggerLike): Promise<Suppor
 
       if (legacyInspect.globalValue !== undefined && opilotInspect?.globalValue === undefined) {
         await opilotConfig.update(key, legacyInspect.globalValue, vscode.ConfigurationTarget.Global);
+        await legacyConfig.update(key, undefined, vscode.ConfigurationTarget.Global);
         didMigrate = true;
       }
 
       if (legacyInspect.workspaceValue !== undefined && opilotInspect?.workspaceValue === undefined) {
         await opilotConfig.update(key, legacyInspect.workspaceValue, vscode.ConfigurationTarget.Workspace);
+        await legacyConfig.update(key, undefined, vscode.ConfigurationTarget.Workspace);
         didMigrate = true;
       }
 
@@ -143,6 +145,7 @@ export async function migrateLegacySettings(logger?: LoggerLike): Promise<Suppor
               legacyFolderInspect.workspaceFolderValue,
               vscode.ConfigurationTarget.WorkspaceFolder,
             );
+            await legacyFolderConfig.update(key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
             migratedAnyFolder = true;
           }
         }

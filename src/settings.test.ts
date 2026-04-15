@@ -192,5 +192,44 @@ describe('settings helpers', () => {
       (vscodeMock.workspace.getConfiguration('opilot', { fsPath: folderB }) as any).inspect('host')
         .workspaceFolderValue,
     ).toBe('http://existing-b:11434');
+
+    // Legacy values are cleaned only for migrated scopes.
+    expect((vscodeMock.workspace.getConfiguration('ollama') as any).inspect('host').globalValue).toBeUndefined();
+    expect((vscodeMock.workspace.getConfiguration('ollama') as any).inspect('host').workspaceValue).toBeUndefined();
+    expect(
+      (vscodeMock.workspace.getConfiguration('ollama', { fsPath: folderA }) as any).inspect('host')
+        .workspaceFolderValue,
+    ).toBeUndefined();
+    // Not migrated (opilot already had explicit folder value), so legacy B remains untouched.
+    expect(
+      (vscodeMock.workspace.getConfiguration('ollama', { fsPath: folderB }) as any).inspect('host')
+        .workspaceFolderValue,
+    ).toBe('http://legacy-b:11434');
+  });
+
+  it('migrateLegacySettings does not clear legacy value when opilot already has explicit value', async () => {
+    const vscodeMock = createVscodeSettingsMock({
+      opilot: {
+        host: {
+          defaultValue: 'http://localhost:11434',
+          workspaceValue: 'http://opilot-workspace:11434',
+        },
+      },
+      legacy: {
+        host: {
+          defaultValue: 'http://localhost:11434',
+          workspaceValue: 'http://legacy-workspace:11434',
+        },
+      },
+    });
+
+    vi.doMock('vscode', () => vscodeMock);
+    const { migrateLegacySettings } = await import('./settings.js');
+
+    const migrated = await migrateLegacySettings();
+    expect(migrated).not.toContain('host');
+    expect((vscodeMock.workspace.getConfiguration('ollama') as any).inspect('host').workspaceValue).toBe(
+      'http://legacy-workspace:11434',
+    );
   });
 });
