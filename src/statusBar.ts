@@ -66,7 +66,14 @@ export async function checkOllamaHealth(client: Ollama, host: string): Promise<H
     }));
     return { online: true, runningCount: runningModels.length, runningModels, host, checkedAt };
   } catch {
-    return { online: false, runningCount: 0, runningModels: [], host, checkedAt };
+    // Fallback: check if the server is simply reachable via list()
+    // This is critical for Ollama Cloud (ollama.com) which doesn't support ps()
+    try {
+      await client.list();
+      return { online: true, runningCount: 0, runningModels: [], host, checkedAt };
+    } catch {
+      return { online: false, runningCount: 0, runningModels: [], host, checkedAt };
+    }
   }
 }
 

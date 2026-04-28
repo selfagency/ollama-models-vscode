@@ -75,8 +75,10 @@ export async function getOllamaClient(context: ExtensionContext): Promise<Ollama
 /**
  * Get an Ollama client for cloud model requests.
  *
- * Cloud usage is login-first (`ollama login`) and routed through the local
- * Ollama server session; no dedicated cloud API key is required.
+ * If the configured host is `https://ollama.com`, this returns a client
+ * connecting directly to the cloud API using the authentication token.
+ * Otherwise, it returns a client connecting to the configured host (e.g. local server),
+ * which handles cloud model requests via credential forwarding (after `ollama login`).
  */
 export async function getCloudOllamaClient(context: ExtensionContext): Promise<Ollama> {
   return getOllamaClient(context);
