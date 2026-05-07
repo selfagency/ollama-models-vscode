@@ -342,6 +342,10 @@ async function resolveBuiltInOllamaConflictFlow(
 
 export let builtInOllamaConflictPromptInProgress = false;
 
+export function setBuiltInOllamaConflictPromptInProgress(value: boolean): void {
+  builtInOllamaConflictPromptInProgress = value;
+}
+
 export async function handleBuiltInOllamaConflict(
   windowApi?: Pick<typeof vscode.window, 'showWarningMessage' | 'showInformationMessage' | 'showErrorMessage'>,
   workspaceApi?: Pick<typeof vscode.workspace, 'getConfiguration'>,
@@ -360,10 +364,10 @@ export async function handleBuiltInOllamaConflict(
 
   if (!(await hasBuiltInOllamaModels(lm))) return;
 
-  builtInOllamaConflictPromptInProgress = true;
+  setBuiltInOllamaConflictPromptInProgress(true);
   try {
     await resolveBuiltInOllamaConflictFlow(win, ws, commands, context);
   } finally {
-    builtInOllamaConflictPromptInProgress = false;
+    setBuiltInOllamaConflictPromptInProgress(false);
   }
 }

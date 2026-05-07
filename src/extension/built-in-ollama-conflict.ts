@@ -1,9 +1,9 @@
 import { promises as fsPromises } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import * as vscode from 'vscode';
 import { isSelectedAction } from '../extensionHelpers.js';
 import { builtInOllamaConflictPromptInProgress as builtInOllamaConflictPromptInProgressExported } from '../participantOrchestration';
-import { homedir } from 'node:os';
 
 const MAX_WRITE_RETRIES = 3;
 let builtInOllamaConflictPromptInProgress = builtInOllamaConflictPromptInProgressExported;
@@ -52,7 +52,7 @@ async function tryUpdateChatLanguageModelsFile(modelsPath: string, maxRetries: n
  * Remove Copilot's built-in Ollama provider from all chat language models JSON files.
  * Scans profile-scoped and user-global config locations across platforms.
  */
-async function removeBuiltInOllamaFromChatLanguageModels(
+export async function removeBuiltInOllamaFromChatLanguageModels(
   context: Pick<vscode.ExtensionContext, 'globalStorageUri'>,
 ): Promise<boolean> {
   const candidatePaths = new Set<string>();

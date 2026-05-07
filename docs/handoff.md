@@ -36,6 +36,7 @@
    - Ensure all changes are committed and pushed to the repository.
 
 ## Notes
+
 - The current branch is `fix/codacy-static-analysis-pr2`.
 - Active pull request: [PR #104](https://github.com/selfagency/opilot/pull/104).
 - Ensure all TypeScript errors and lint issues are resolved before finalizing the commit.
