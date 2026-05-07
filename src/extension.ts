@@ -2,7 +2,6 @@
 import { createVSCodeChatRenderer, mapUsageToVSCode, toVSCodeToolCallPart } from '@agentsy/vscode';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type { ChatResponse, Message, Ollama, Tool } from 'ollama';
 import * as vscode from 'vscode';
 import { registerChatCustomizationProvider } from './chatCustomizationProvider.js';
@@ -20,7 +19,6 @@ import { setupProviders, type ProviderSetupContext } from './extension/provider-
 import {
   beginToolInvocationSafely,
   reportThinkingProgressSafely,
-  reportUsageSafely,
   reportWarningSafely,
   updateToolInvocationSafely,
 } from './extension/stream-ui.js';
@@ -49,8 +47,6 @@ import {
   buildNativeToolsArray,
   buildXmlToolSystemPrompt,
   extractXmlToolCalls,
-  isToolsNotSupportedError,
-} from './toolUtils.js';
 
 import { handleBuiltInOllamaConflict } from './extension/built-in-ollama-conflict';
 
