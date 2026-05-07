@@ -11,7 +11,6 @@ describe('participant-setup', () => {
   let mockHandler: vscode.ChatRequestHandler;
   let mockClient: Record<string, unknown>;
   let mockDiagnostics: Record<string, unknown>;
-  let mockClient: any;
 
   beforeEach(() => {
     vi.resetAllMocks();

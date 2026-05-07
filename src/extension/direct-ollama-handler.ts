@@ -7,7 +7,6 @@ import type { Message, Ollama } from 'ollama';
 import * as vscode from 'vscode';
 import { type DiagnosticsLogger } from '../diagnostics.js';
 import { type ModelSettingsStore } from '../modelSettings.js';
-import { type ChatRequestHandler } from './lm-api.js';
 import { type ModelOptionOverrides } from '../modelSettings.js';
 
 const PROVIDER_MODEL_ID_PREFIX = 'ollama:' as const;
