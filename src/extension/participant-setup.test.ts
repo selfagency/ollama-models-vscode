@@ -8,9 +8,20 @@ import { setupChatParticipant } from './participant-setup.js';
 
 describe('participant-setup', () => {
   let mockContext: vscode.ExtensionContext;
-  let mockHandler: vscode.ChatRequestHandler;
-  let mockClient: Record<string, unknown>;
-  let mockDiagnostics: Record<string, unknown>;
+  let mockHandler: (
+    request: vscode.ChatRequest,
+    chatContext: vscode.ChatContext,
+    stream: vscode.ChatResponseStream,
+    token: vscode.CancellationToken,
+  ) => Promise<void>;
+  let mockClient: { ps: ReturnType<typeof vi.fn> };
+  let mockDiagnostics: {
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    exception?: ReturnType<typeof vi.fn>;
+  };
+  let mockParticipant: vscode.Disposable & { onDidReceiveMessage: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.resetAllMocks();

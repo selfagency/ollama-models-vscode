@@ -11,9 +11,35 @@ describe('direct-ollama-handler', () => {
   let _mockChatContext: vscode.ChatContext;
   let mockStream: vscode.ChatResponseStream;
   let mockToken: vscode.CancellationToken;
-  let mockClient: Record<string, unknown>;
-  let mockDiagnostics: Record<string, unknown>;
-  let mockExtensionContext: Record<string, unknown>;
+  let mockClient: {
+    chat: ReturnType<typeof vi.fn>;
+    ps: ReturnType<typeof vi.fn>;
+    fileExists?: ReturnType<typeof vi.fn>;
+    config?: ReturnType<typeof vi.fn>;
+    create?: ReturnType<typeof vi.fn>;
+    encodeImage?: ReturnType<typeof vi.fn>;
+  };
+  let mockDiagnostics: {
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    exception?: ReturnType<typeof vi.fn>;
+    debug?: ReturnType<typeof vi.fn>;
+  };
+  let mockExtensionContext: {
+    subscriptions: ReturnType<typeof vi.fn>[];
+    extensionUri: vscode.Uri;
+    workspaceState?: {
+      get: ReturnType<typeof vi.fn>;
+    };
+    globalState?: {
+      get: ReturnType<typeof vi.fn>;
+    };
+    secrets?: {
+      get: ReturnType<typeof vi.fn>;
+      store: ReturnType<typeof vi.fn>;
+    };
+  };
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -43,6 +69,7 @@ describe('direct-ollama-handler', () => {
       chat: vi.fn().mockResolvedValue({
         message: { content: 'Test response' },
       }),
+      ps: vi.fn(),
     };
 
     _mockChatContext = {
@@ -53,11 +80,11 @@ describe('direct-ollama-handler', () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-      debug: vi.fn(),
     };
 
     mockExtensionContext = {
       extensionUri: vscode.Uri.file('/tmp/extension'),
+      subscriptions: [],
     };
   });
 

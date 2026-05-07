@@ -921,6 +921,30 @@ async function handleDirectOllamaRequest(
   }
 }
 
+export function setupChatParticipant(
+  context: vscode.ExtensionContext,
+  handler: ChatRequestHandler,
+  chatParticipantDetectionProvider?: vscode.Disposable,
+  client?: ChatClient,
+  diagnostics?: DiagnosticsLogger,
+): Promise<vscode.Disposable> {
+  // Import participant setup function
+  return import('./extension/participant-setup.js')
+    .then((module) => module.setupChatParticipant(context, handler, chatParticipantDetectionProvider, client, diagnostics));
+}
+
+export async function handleBuiltInOllamaConflict(
+  response: vscode.LanguageModelChatResponse | null,
+  request: vscode.LanguageModelChatRequest,
+  stream: vscode.ChatResponseStream | null,
+  token: vscode.CancellationToken | null,
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  // Import conflict handler function
+  return import('./extension/built-in-ollama-conflict.js')
+    .then((module) => module.handleBuiltInOllamaConflict(response, request, stream, token, context));
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   let logTailProcess: ChildProcessWithoutNullStreams | undefined;
   const noopLogger: DiagnosticsLogger = {

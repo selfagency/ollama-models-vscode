@@ -193,7 +193,7 @@ export function createFollowupProvider() {
         followups.push({
           prompt: 'Apply these changes to my file',
           label: '📝 Apply to file',
-          tooltip: 'Open the suggested changes in an editor',
+          //
         });
       }
 
@@ -202,7 +202,7 @@ export function createFollowupProvider() {
         followups.push({
           prompt: 'Can you explain that further?',
           label: '🔍 Explain more',
-          tooltip: 'Get more details on the topic',
+          //
         });
       }
 
@@ -211,7 +211,7 @@ export function createFollowupProvider() {
         followups.push({
           prompt: 'Pull one of these models',
           label: '⬇️ Pull a model',
-          tooltip: 'Download a model from Ollama Library',
+          //
         });
       }
 
@@ -219,7 +219,7 @@ export function createFollowupProvider() {
       followups.push({
         prompt: 'Continue on this topic',
         label: '➡️ Continue',
-        tooltip: 'Ask more about this topic',
+        //
       });
 
       return followups.length > 0 ? followups : undefined;

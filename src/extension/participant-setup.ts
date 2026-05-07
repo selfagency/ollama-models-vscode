@@ -7,49 +7,37 @@ import * as vscode from 'vscode';
 import { type ChatClient } from '../client.js';
 import { type DiagnosticsLogger } from '../diagnostics.js';
 import { type ModelSettingsStore } from '../modelSettings.js';
-import { type ChatRequestHandler } from './lm-api.js';
-import {
-  getHelpTextPrefix,
-  createTitleProvider,
-  createSummarizer,
-  getAdditionalWelcomeMessage,
-} from '../participantFeatures.js';
+import { resolvePromptReferences } from '../participantFeatures.js';
 
 /**
  * Setup context for chat participant registration
  */
 export type ParticipantSetupContext = {
   context: vscode.ExtensionContext;
-  handler: ChatRequestHandler;
+  handler: vscode.ChatRequestHandler;
   diagnostics: DiagnosticsLogger;
   client: ChatClient;
   modelSettingsStore: ModelSettingsStore;
 };
 
 /**
- * Creates and registers the chat participant
- * @param context Extension context
+ * Creates and registers the task chat participant
+ * @param _ context Extension context (unused, kept for backward compatibility)
  * @param handler Chat request handler function
- * @param chatParticipantDetectionProvider Optional chat participant detection provider
+ * @param _ chatParticipantDetectionProvider Optional chat participant detection provider (not used)
  * @param client Ollama client
  * @param diagnostics Diagnostics logger
  * @returns Promise that resolves to the chat participant disposable
  */
 export async function setupChatParticipant(
-  _: vscode.ExtensionContext,
-  handler: ChatRequestHandler,
-  chatParticipantDetectionProvider?: vscode.Disposable,
+  context: vscode.ExtensionContext,
+  handler: vscode.ChatRequestHandler,
+  _chatParticipantDetectionProvider?: vscode.Disposable,
   client?: ChatClient,
   diagnostics?: DiagnosticsLogger,
 ): Promise<vscode.Disposable> {
-  const participantDetectionProvider = createParticipantDetectionProvider();
-  const participantVariableProvider = createParticipantVariableProvider();
-  const titleProvider = createTitleProvider();
-  const followupProvider = createFollowupProvider();
-  const summarizer = createSummarizer();
-
-  const additionalWelcomeMessage = getAdditionalWelcomeMessage();
-  const helpTextPrefix = getHelpTextPrefix();
+  const additionalWelcomeMessage = 'Welcome to Opilot! Ask me anything or run /task to use open-ended planning.';
+  const helpTextPrefix = '\n\nThis is a secure, local-only chat participant. All processing happens on your machine.';
 
   const participant = vscode.chat.createChatParticipant('opilot', {
     name: 'Opilot',
@@ -66,8 +54,8 @@ export async function setupChatParticipant(
     },
     // eslint-disable-next-line @typescript-eslint/require-await
     async welcome() {
-      return new vscode.ChatResponsePartialPart({
-        message: new vscode.ChatResponseMarkdownPart(`${additionalWelcomeMessage}\n\n${helpTextPrefix}`),
+      return new vscode.ChatResponseAnchorPart({
+        value: `${additionalWelcomeMessage}${helpTextPrefix}`,
       });
     },
   });
@@ -86,18 +74,9 @@ export async function setupChatParticipant(
     }
   });
 
-  const subscriptions: vscode.Disposable[] = [
-    participant,
-    participantDetectionProvider,
-    participantVariableProvider,
-    titleProvider,
-    followupProvider,
-    summarizer,
-  ];
+  participant.onDidReceiveMessage(handler);
 
-  if (chatParticipantDetectionProvider) {
-    subscriptions.push(chatParticipantDetectionProvider);
-  }
+  const subscriptions: vscode.Disposable[] = [participant];
 
   context.subscriptions.push(...subscriptions);
 
@@ -109,14 +88,3 @@ export async function setupChatParticipant(
     },
   };
 }
-
-export {
-  createFollowupProvider,
-  createParticipantDetectionProvider,
-  createParticipantVariableProvider,
-  createSummarizer,
-  createTitleProvider,
-  getAdditionalWelcomeMessage,
-  getHelpTextPrefix,
-  resolvePromptReferences,
-} from '../participantFeatures.js';
